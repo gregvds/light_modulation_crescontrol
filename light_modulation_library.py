@@ -52,7 +52,7 @@ def calculate_intensity(current_time, earliest_power_on, latest_power_off, ampli
     begining at earliest_power_on, ending at latest_power_off and reaching amplitude_modulation
     """
     # Calculate the current time in hours
-    current_hour = current_time.hour + current_time.minute / 60
+    current_hour = convert_datetime_to_decimal_hour(current_time)
     # Calculate the fraction of the day passed
     fraction_of_day = (current_hour - earliest_power_on) / (latest_power_off - earliest_power_on)
     # Calculate the angle for the cosine curve within the interval from -π/2 to +π/2
@@ -151,7 +151,85 @@ def calculate_modulated_latest_power_off(current_date, latest_power_off, power_o
     modulated_latest_power_off = latest_power_off + (power_off_time_modulation_hours * math.cos(power_off_time_modulation_angle))
     return modulated_latest_power_off
 
-def create_intensity_data_suntime(transition_duration_minutes, amplitude_modulation, maximum_voltage, mode="centered", length_proportion=1.0, date=None):
+def get_equinox_sunrise(time_zone=2):
+    """
+    This function gives the hour of sunrise at Equinox, used to evaluate the
+    difference between it and sunrise time of the current day.
+    Time is given according to timezone (default = 2).
+    The 22th of March of the current year is used, rather roughly...
+    """
+    timezone_hours = datetime.timedelta(seconds=3600*time_zone)
+    sun = Sun(LATITUDE, LONGITUDE)
+    equinox_sunrise_time = sun.get_sunrise_time(date=datetime.date(datetime.date.today().year,3,22)) + timezone_hours
+    #print(equinox_sunrise_time)
+    return convert_datetime_to_decimal_hour(equinox_sunrise_time)
+
+def get_equinox_sunset(time_zone=2):
+    """
+    This function gives the hour of sunset at Equinox, used to evaluate the
+    difference between it and sunset time of the current day.
+    Time is given according to timezone (default = 2).
+    The 22th of March of the current year is used, rather roughly...
+    """
+    timezone_hours = datetime.timedelta(seconds=3600*time_zone)
+    sun = Sun(LATITUDE, LONGITUDE)
+    equinox_sunset_time = sun.get_sunset_time(date=datetime.date(datetime.date.today().year,3,22)) + timezone_hours
+    #print(equinox_sunset_time)
+    return convert_datetime_to_decimal_hour(equinox_sunset_time)
+
+def get_summer_solstice_sunrise(time_zone=2):
+    """
+    This function gives the hour of Summer Solstice, used to evaluate the
+    difference between it and sunrise time of the current day.
+    Time is given according to timezone (default = 2).
+    The 22th of June of the current year is used, rather roughly...
+    """
+    timezone_hours = datetime.timedelta(seconds=3600*time_zone)
+    sun = Sun(LATITUDE, LONGITUDE)
+    equinox_sunrise_time = sun.get_sunrise_time(date=datetime.date(datetime.date.today().year,6,22)) + timezone_hours
+    #print(equinox_sunrise_time)
+    return convert_datetime_to_decimal_hour(equinox_sunrise_time)
+
+def get_summer_solstice_sunset(time_zone=2):
+    """
+    This function gives the hour of sunset at Summer Solstice, used to evaluate the
+    difference between it and sunset time of the current day.
+    Time is given according to timezone (default = 2).
+    The 22th of June of the current year is used, rather roughly...
+    """
+    timezone_hours = datetime.timedelta(seconds=3600*time_zone)
+    sun = Sun(LATITUDE, LONGITUDE)
+    equinox_sunset_time = sun.get_sunset_time(date=datetime.date(datetime.date.today().year,6,22)) + timezone_hours
+    #print(equinox_sunset_time)
+    return convert_datetime_to_decimal_hour(equinox_sunset_time)
+
+def get_winter_solstice_sunrise(time_zone=2):
+    """
+    This function gives the hour of Winter Solstice, used to evaluate the
+    difference between it and sunrise time of the current day.
+    Time is given according to timezone (default = 2).
+    The 22th of December of the current year is used, rather roughly...
+    """
+    timezone_hours = datetime.timedelta(seconds=3600*time_zone)
+    sun = Sun(LATITUDE, LONGITUDE)
+    equinox_sunrise_time = sun.get_sunrise_time(date=datetime.date(datetime.date.today().year,12,22)) + timezone_hours
+    #print(equinox_sunrise_time)
+    return convert_datetime_to_decimal_hour(equinox_sunrise_time)
+
+def get_winter_solstice_sunset(time_zone=2):
+    """
+    This function gives the hour of sunset at Winter Solstice, used to evaluate the
+    difference between it and sunset time of the current day.
+    Time is given according to timezone (default = 2).
+    The 22th of December of the current year is used, rather roughly...
+    """
+    timezone_hours = datetime.timedelta(seconds=3600*time_zone)
+    sun = Sun(LATITUDE, LONGITUDE)
+    equinox_sunset_time = sun.get_sunset_time(date=datetime.date(datetime.date.today().year,12,22)) + timezone_hours
+    #print(equinox_sunset_time)
+    return convert_datetime_to_decimal_hour(equinox_sunset_time)
+
+def create_intensity_data_suntime(maximum_voltage, amplitude_modulation=None, mode="centered", length_proportion=1.0, date=None, smoothing=True, transition_duration_minutes=60):
     """
     Create a list of times and intensities throughout the day (packed in tuples).
     This function uses latitude and longitude to generate earliest_power_on and
@@ -160,13 +238,14 @@ def create_intensity_data_suntime(transition_duration_minutes, amplitude_modulat
     - 'centered' (default) produces a curve centered on noon during a given proportion of the duration of the current day
     - 'dawn' produces a curve from sunrise during a given proportion of the duration of the current day
     - 'dusk' produces a curve before sunset during a given proportion of the duration of the current day
-    By default the length_proportion = 1.0 but takes a value between 0.0 and 1.0
+    By default the length_proportion = 1.0 but takes a value between 0.0 and 1.5
     """
+    # check inputs for proper content and values
     if mode not in ('centered', 'dawn', 'dusk'):
         print(f"Error: {mode} is not a recognized working mode for this function.\nPlease choose either 'centered', 'dawn' or 'dusk'.")
         return
-    if not ((0.0 <= length_proportion) and (length_proportion <= 1.0)):
-        print(f"Error: length_proportion {length_proportion} should be in the range 0.0-1.0.")
+    if not ((0.0 <= length_proportion) and (length_proportion <= 1.5)):
+        print(f"Error: length_proportion {length_proportion} should be in the range 0.0-1.5.")
         return
     current_date        = date if date is not None else datetime.date.today()
     current_datetime    = datetime.datetime(current_date.year, current_date.month, current_date.day, 0, 0)  # Start at midnight
@@ -176,11 +255,28 @@ def create_intensity_data_suntime(transition_duration_minutes, amplitude_modulat
     max_iterations      = 24 * 60 // TIME_STEP_MINUTES  # Maximum number of iterations (1 day)
     iterations          = 0  # Counter for iterations
     sun                 = Sun(LATITUDE, LONGITUDE)
-    earliest_power_on   = convert_datetime_to_decimal_hour(sun.get_sunrise_time(current_date) + datetime.timedelta(seconds=7200))
-    latest_power_off    = convert_datetime_to_decimal_hour(sun.get_sunset_time(current_date) + datetime.timedelta(seconds=7200))
-    modulated_max_intensity = calculate_modulated_max_intensity(current_date, amplitude_modulation)
+    earliest_power_on   = convert_datetime_to_decimal_hour(sun.get_sunrise_time(current_date) + datetime.timedelta(seconds=3600*TIMEZONE))
+    latest_power_off    = convert_datetime_to_decimal_hour(sun.get_sunset_time(current_date) + datetime.timedelta(seconds=3600*TIMEZONE))
     day_length = latest_power_off - earliest_power_on
     noon = (earliest_power_on + latest_power_off)/2.0
+
+    equinox_day_length = get_equinox_sunset()-get_equinox_sunrise()
+    #print(f'Proportion of current day length vs Equinox day length: {day_length/equinox_day_length}')
+    summer_solstice_day_length = get_summer_solstice_sunset() - get_summer_solstice_sunrise()
+    #print(f'Proportion of current day length vs Summer Solstice day length: {day_length/summer_solstice_day_length}')
+    winter_solstice_day_length = get_winter_solstice_sunset() - get_winter_solstice_sunrise()
+    #print(f'Proportion of current day length vs Winter Solstice day length: {day_length/winter_solstice_day_length}')
+    #print(f'Proportion of Winter Solstice day length vs Summer Solstice day length: {winter_solstice_day_length/summer_solstice_day_length}')
+
+    # New methodology to calculate amplitude modulation based on current day length
+    # compared to the longest day of the year (namely the Summer Solstice day)
+    # The third root is here to pull back up a bit values (minimum = 0.73333 -> 0.90...)
+    if amplitude_modulation is None:
+        modulated_max_intensity = min(1.0, math.pow((day_length/summer_solstice_day_length), (1.0/3.0)))
+    else:   # Deprecated, needs the user to guess/give a amplitude of modulation...
+        modulated_max_intensity = calculate_modulated_max_intensity(current_date, amplitude_modulation)
+
+    # Modifications of begin and end of curve according to the choosen mode
     if mode == 'centered':
         # begins late and finishes early in proportion with the day duration
         # with default length_proportion=1.0, generate a normal curve.
@@ -193,6 +289,7 @@ def create_intensity_data_suntime(transition_duration_minutes, amplitude_modulat
         # begins late in proportion with the day duration
         earliest_power_on    = latest_power_off - day_length * length_proportion
 
+    # Calculates all tuples (time_in_second, intensity) for the current day
     while iterations < max_iterations:
         intensity = calculate_intensity(current_datetime, earliest_power_on, latest_power_off, modulated_max_intensity)
         intensity = max(0,intensity)
@@ -204,9 +301,12 @@ def create_intensity_data_suntime(transition_duration_minutes, amplitude_modulat
         data_points_hours.append((current_hour, intensity))  # Store data with time in hours
         current_datetime += time_step
         iterations += 1
-    overspill_proportion = 0.85
-    smoothing_iteration = 1
-    data_points_seconds = smooth_transition_intensity(data_points_seconds, earliest_power_on, latest_power_off, transition_duration_minutes, overspill_proportion, smoothing_iteration)
+
+    # smooth begin and end of curve
+    if smoothing is True:
+        overspill_proportion = 0.85
+        smoothing_iteration = 1
+        data_points_seconds = smooth_transition_intensity(data_points_seconds, earliest_power_on, latest_power_off, transition_duration_minutes, overspill_proportion, smoothing_iteration)
     return scale_data_points_seconds(data_points_seconds, maximum_voltage), scale_data_points_seconds(data_points_hours, maximum_voltage), earliest_power_on, latest_power_off, modulated_max_intensity
 
 def create_intensity_data(earliest_power_on,
@@ -219,7 +319,7 @@ def create_intensity_data(earliest_power_on,
                           date=None):
     """
     Create a list of times and intensities throughout the day (packed in tuples).
-    This methodology is obsolete, please use create_intensity_data_suntime
+    !! This methodology is obsolete, please use create_intensity_data_suntime !!
     """
     current_date        = date if date is not None else datetime.date.today()
     current_datetime    = datetime.datetime(current_date.year, current_date.month, current_date.day, 0, 0)  # Start at midnight
@@ -573,15 +673,14 @@ def send_schedules_to_crescontrol(schedule_dic):
         output += f'Sending schedule data for schedule {schedule_name}:\n'
         total_time = 0
 
-        (output,total_time) = execute_command_and_report(f'schedule:set-enabled("{schedule_name}",0)', output=output, total_time=total_time)
+        (output,total_time) = execute_command_and_report(f'schedule:set-enabled("{schedule_name}",0)',              output=output, total_time=total_time)
         (output,total_time) = execute_command_and_report(f'schedule:set-timetable("{schedule_name}","{schedule}")', output=output, total_time=total_time)
-        (output,total_time) = execute_command_and_report(f'schedule:set-resolution("{schedule_name}",0.05,0.02)', output=output, total_time=total_time)
-        (output,total_time) = execute_command_and_report(f'schedule:set-enabled("{schedule_name}",1)', output=output, total_time=total_time)
-        (output,total_time) = execute_command_and_report(f'schedule:save("{schedule_name}")', output=output, total_time=total_time)
+        (output,total_time) = execute_command_and_report(f'schedule:set-resolution("{schedule_name}",0.05,0.02)',   output=output, total_time=total_time)
+        (output,total_time) = execute_command_and_report(f'schedule:set-enabled("{schedule_name}",1)',              output=output, total_time=total_time)
+        (output,total_time) = execute_command_and_report(f'schedule:save("{schedule_name}")',                       output=output, total_time=total_time)
 
-        # Check if the request was successful (status code 200)
+        # Check if the request was successful
         if total_time < 5000:
-            # Print the response content (the HTML of the webpage in this case)
             output += f'{schedule_name} successfully updated in {round_thousands_second_time_delta(total_time)} secs :-).\n'
             status = True
         else:

@@ -32,30 +32,6 @@ PLOT = False
     For easier reading, we encapsulate all this in function generate_schedules().
 """
 
-def get_equinox_sunrise(time_zone=2):
-    """
-    This function gives the hour of sunrise at Equinox, used to evaluate the
-    difference between it and sunrise time of the current day.
-    Time is given according to timezone (default = 2).
-    """
-    timezone_hours = lml.datetime.timedelta(seconds=3600*time_zone)
-    sun = lml.Sun(lml.LATITUDE, lml.LONGITUDE)
-    equinox_sunrise_time = sun.get_sunrise_time(date=lml.datetime.date(2023,3,22)) + timezone_hours
-    #print(equinox_sunrise_time)
-    return equinox_sunrise_time.hour + equinox_sunrise_time.minute/60 + equinox_sunrise_time.second/3600
-
-def get_equinox_sunset(time_zone=2):
-    """
-    This function gives the hour of sunset at Equinox, used to evaluate the
-    difference between it and sunset time of the current day.
-    Time is given according to timezone (default = 2).
-    """
-    timezone_hours = lml.datetime.timedelta(seconds=3600*time_zone)
-    sun = lml.Sun(lml.LATITUDE, lml.LONGITUDE)
-    equinox_sunset_time = sun.get_sunset_time(date=lml.datetime.date(2023,3,22)) + timezone_hours
-    #print(equinox_sunset_time)
-    return equinox_sunset_time.hour + equinox_sunset_time.minute/60 + equinox_sunset_time.second/3600
-
 def generate_3500K_schedule(schedule_name):
     """
     Generate a curve for 3500k for dawn and dusk by summing two different schedules
@@ -63,24 +39,22 @@ def generate_3500K_schedule(schedule_name):
     vs the length of the current day; by default = 0.25.
     """
     # Parameters (you can adjust these)
-    transition_duration_minutes = 90  # Duration of smooth transitions at the begin and end (x minutes)
-    amplitude_modulation = 0.1  # Amplitude of the intensity modulation (e.g., ±10%)
     maximum_voltage = 4  # Maximum voltage (adjustable, 0-10V)
+    transition_duration_minutes = 90  # Duration of smooth transitions at the begin and end (x minutes)
 
     # We save back the data and the modulated begin and max intensity
     (data_points_seconds_first,
     junk,
     daily_earliest_power_on,
     junk,
-    daily_maximum_intensity) = lml.create_intensity_data_suntime(transition_duration_minutes,
-                                                                 amplitude_modulation,
-                                                                 maximum_voltage,
+    daily_maximum_intensity) = lml.create_intensity_data_suntime(maximum_voltage,
                                                                  mode="dawn",
-                                                                 length_proportion=0.25)
+                                                                 length_proportion=0.25,
+                                                                 transition_duration_minutes=transition_duration_minutes)
 
     schedule_3500_dic = {
         'schedule_name': schedule_name,
-        'earliest_power_on': get_equinox_sunrise(),
+        'earliest_power_on': lml.get_equinox_sunrise(),
         'daily_earliest_power_on': daily_earliest_power_on,
         'daily_maximum_intensity': daily_maximum_intensity
     }
@@ -90,23 +64,19 @@ def generate_3500K_schedule(schedule_name):
     junk,
     junk,
     daily_latest_power_off,
-    junk) = lml.create_intensity_data_suntime(transition_duration_minutes,
-                                              amplitude_modulation,
-                                              maximum_voltage,
+    junk) = lml.create_intensity_data_suntime(maximum_voltage,
                                               mode='dusk',
-                                              length_proportion=0.25)
+                                              length_proportion=0.25,
+                                              transition_duration_minutes=transition_duration_minutes)
 
     # sum dawn and dusk schedules
     data_points_seconds = lml.sum_data_points_seconds(data_points_seconds_first,
                                                       data_points_seconds_second)
 
     schedule_3500_dic['full_schedule'] = data_points_seconds
-    schedule_3500_dic['latest_power_off'] = get_equinox_sunset()
+    schedule_3500_dic['latest_power_off'] = lml.get_equinox_sunset()
     schedule_3500_dic['daily_latest_power_off'] = daily_latest_power_off
-    schedule_3500_dic['power_on_time_modulation_hours'] = 0
-    schedule_3500_dic['power_off_time_modulation_hours'] = 0
     schedule_3500_dic['transition_duration_minutes'] = transition_duration_minutes
-    schedule_3500_dic['amplitude_modulation'] = amplitude_modulation
     schedule_3500_dic['maximum_voltage'] = maximum_voltage
     return schedule_3500_dic
 
@@ -115,30 +85,25 @@ def generate_5000K_schedule(schedule_name):
     Generate total envelope curve for 5000k
     """
     # Parameters (you can adjust these)
-    transition_duration_minutes = 60  # Duration of smooth transitions at the begin and end (x minutes)
-    amplitude_modulation = 0.1  # Amplitude of the intensity modulation (e.g., ±10%)
     maximum_voltage = 10  # Maximum voltage (adjustable, 0-10V)
+    transition_duration_minutes = 60  # Duration of smooth transitions at the begin and end (x minutes)
 
     # We save back the data and the modulated begin, end and max intensity
     (data_points_seconds,
     junk,
     daily_earliest_power_on,
     daily_latest_power_off,
-    daily_maximum_intensity) = lml.create_intensity_data_suntime(transition_duration_minutes,
-                                                                 amplitude_modulation,
-                                                                 maximum_voltage)
+    daily_maximum_intensity) = lml.create_intensity_data_suntime(maximum_voltage,
+                                                                 transition_duration_minutes=transition_duration_minutes)
 
     schedule_5000_dic = {
         'schedule_name': schedule_name,
         'full_schedule': data_points_seconds,
-        'earliest_power_on': get_equinox_sunrise(),
+        'earliest_power_on': lml.get_equinox_sunrise(),
         'daily_earliest_power_on': daily_earliest_power_on,
-        'latest_power_off': get_equinox_sunset(),
+        'latest_power_off': lml.get_equinox_sunset(),
         'daily_latest_power_off': daily_latest_power_off,
-        'power_on_time_modulation_hours': 0,
-        'power_off_time_modulation_hours': 0,
         'transition_duration_minutes': transition_duration_minutes,
-        'amplitude_modulation': amplitude_modulation,
         'maximum_voltage': maximum_voltage,
         'daily_maximum_intensity': daily_maximum_intensity
     }
@@ -149,30 +114,25 @@ def generate_385_schedule(schedule_name):
     Generate total envelope curve for 385nm
     """
     # Parameters (you can adjust these)
-    transition_duration_minutes = 40  # Duration of smooth transitions at the begin and end (x minutes)
-    amplitude_modulation = 0.1  # Amplitude of the intensity modulation (e.g., ±10%)
     maximum_voltage = 3  # Maximum voltage (adjustable, 0-10V)
+    transition_duration_minutes = 40  # Duration of smooth transitions at the begin and end (x minutes)
 
     (data_points_seconds,
     junk,
     daily_earliest_power_on,
     daily_latest_power_off,
-    daily_maximum_intensity) = lml.create_intensity_data_suntime(transition_duration_minutes,
-                                                                 amplitude_modulation,
-                                                                 maximum_voltage,
-                                                                 length_proportion=0.6)
+    daily_maximum_intensity) = lml.create_intensity_data_suntime(maximum_voltage,
+                                                                 length_proportion=0.6,
+                                                                 transition_duration_minutes=transition_duration_minutes)
 
     schedule_385_dic = {
         'schedule_name': schedule_name,
         'full_schedule': data_points_seconds,
-        'earliest_power_on': daily_earliest_power_on,
+        'earliest_power_on': lml.get_equinox_sunrise(),
         'daily_earliest_power_on': daily_earliest_power_on,
-        'latest_power_off': daily_latest_power_off,
+        'latest_power_off': lml.get_equinox_sunset(),
         'daily_latest_power_off': daily_latest_power_off,
-        'power_on_time_modulation_hours': 0,
-        'power_off_time_modulation_hours': 0,
         'transition_duration_minutes': transition_duration_minutes,
-        'amplitude_modulation': amplitude_modulation,
         'maximum_voltage': maximum_voltage,
         'daily_maximum_intensity': daily_maximum_intensity
     }
