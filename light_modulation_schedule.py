@@ -32,24 +32,28 @@ PLOT = False
     For easier reading, we encapsulate all this in function generate_schedules().
 """
 
-def get_equinox_sunrise():
+def get_equinox_sunrise(time_zone=2):
     """
     This function gives the hour of sunrise at Equinox, used to evaluate the
     difference between it and sunrise time of the current day.
+    Time is given according to timezone (default = 2).
     """
+    timezone_hours = lml.datetime.timedelta(seconds=3600*time_zone)
     sun = lml.Sun(lml.LATITUDE, lml.LONGITUDE)
-    equinox_sunrise_time = sun.get_sunrise_time(date=lml.datetime.date(2023,3,22)) + lml.datetime.timedelta(seconds=7200)
-    print(equinox_sunrise_time)
+    equinox_sunrise_time = sun.get_sunrise_time(date=lml.datetime.date(2023,3,22)) + timezone_hours
+    #print(equinox_sunrise_time)
     return equinox_sunrise_time.hour + equinox_sunrise_time.minute/60 + equinox_sunrise_time.second/3600
 
-def get_equinox_sunset():
+def get_equinox_sunset(time_zone=2):
     """
     This function gives the hour of sunset at Equinox, used to evaluate the
     difference between it and sunset time of the current day.
+    Time is given according to timezone (default = 2).
     """
+    timezone_hours = lml.datetime.timedelta(seconds=3600*time_zone)
     sun = lml.Sun(lml.LATITUDE, lml.LONGITUDE)
-    equinox_sunset_time = sun.get_sunset_time(date=lml.datetime.date(2023,3,22)) + lml.datetime.timedelta(seconds=7200)
-    print(equinox_sunset_time)
+    equinox_sunset_time = sun.get_sunset_time(date=lml.datetime.date(2023,3,22)) + timezone_hours
+    #print(equinox_sunset_time)
     return equinox_sunset_time.hour + equinox_sunset_time.minute/60 + equinox_sunset_time.second/3600
 
 def generate_3500K_schedule(schedule_name):

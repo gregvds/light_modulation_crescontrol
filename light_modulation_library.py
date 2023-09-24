@@ -450,21 +450,41 @@ def execute_command(query, clean_answer=True):
         response = clean_up_crescontrol_response(response)
     return response, time_taken
 
+def execute_command_and_report(query, output="", total_time=0):
+    """
+    Wrapping function of above function and add reporting/time to given args
+    """
+    output += f"Query: {query}\n"
+    response, time_taken = execute_command(query)
+    total_time += time_taken
+    output += f'Response (in {round_thousands_second_time_delta(time_taken)} secs.): {response}\n'
+    return output, total_time
+
 def test_crescontrol_online():
-    output = f'Testing if CresControl {CRESCONTROL_URL} is accessible:\n'
+    output = f'Testing if CresControl on ws://{CRESCONTROL_IP}:81 is accessible:\n'
     status = False
     query = 'system:cpu-id'
-    output = output + 'Query: ' + query + '\n'
+    output += f"Query: {query}\n"
     response, time_taken = execute_command(query)
     if CRESCONTROL_CPU_ID in response and time_taken < 1000:
         output += f'Response (in {round_thousands_second_time_delta(time_taken)} secs.): {response}\n'
-        output += f'Crescontrol online\n\n'
+        output += f'Crescontrol online :-)\n\n'
         status =  True
     else:
         output += f'Response (in {round_thousands_second_time_delta(time_taken)} secs.): {response.text}\n'
-        output += f'Unable to reach {CRESCONTROL_URL} with CPU ID {CRESCONTROL_CPU_ID}: {response}\n\n'
+        output += f'Unable to reach {CRESCONTROL_URL} with CPU ID {CRESCONTROL_CPU_ID} :-(: {response}\n\n'
         status =  False
     return output, status
+
+def set_crescontrol_timezone(timezone):
+    """
+    Set the timezone of the CresControl so as it is coherent and adapted with
+    the suntime of your place and does not changes according to summer daylight
+    saving time, which the sun does not follow :-).
+    """
+    output = f'Set CresControl set timezone = {timezone}:\n'
+    (response, time_taken) = execute_command_and_report(f'time:timezone={timezone}', output)
+    return response, time_taken
 
 def get_crescontrol_led_verbosity():
     output = f'Set CresControl led verbosity:\n'
@@ -483,8 +503,8 @@ def set_crescontrol_led_verbosity(level):
     if value in (0,1,2,3):
         output = f'Set CresControl led verbosity:\n'
         query = f'led:verbosity={level}'
-        output = output + 'Query: ' + query + '\n'
-        response, time_taken = execute_command(query)
+        output += f"Query: {query}\n"
+        (response, time_taken) = execute_command(query)
         return response, time_taken
     else:
         return f'Faulty value. Must be between 0 and 3 included', 0.0
@@ -492,8 +512,8 @@ def set_crescontrol_led_verbosity(level):
 def get_crescontrol_websocket_remote_allow_connection():
     output = f'Get CresControl websocket remote allow connection:\n'
     query = f'websocket:remote:allow-connection'
-    output = output + 'Query: ' + query + '\n'
-    response, time_taken = execute_command(query)
+    output += f"Query: {query}\n"
+    (response, time_taken) = execute_command(query)
     return response, time_taken
 
 def set_crescontrol_websocket_remote_allow_connection(value):
@@ -504,8 +524,8 @@ def set_crescontrol_websocket_remote_allow_connection(value):
     if value in (0,1):
         output = f'Set CresControl websocket remote allow connection to {value}:\n'
         query = f'websocket:remote:allow-connection={value}'
-        output = output + 'Query: ' + query + '\n'
-        response, time_taken = execute_command(query)
+        output += f"Query: {query}\n"
+        (response, time_taken) = execute_command(query)
         return response, time_taken
     else:
         return f'Faulty value. Must be 0 or 1', 0.0
@@ -513,56 +533,33 @@ def set_crescontrol_websocket_remote_allow_connection(value):
 def get_crescontrol_time():
     output = f'Crescontrol time:\n'
     query = 'time:daytime'
-    response, time_taken = execute_command(query)
+    (response, time_taken) = execute_command(query)
     return response
 
 def create_schedule_if_not_exists(schedule_name, out_port):
     output = f'Creating schedule {schedule_name} for {out_port} if not existant:\n'
     status = False
-    sub_output, cc_online = test_crescontrol_online()
-    output += sub_output
-    if cc_online is True:
-        query = f'schedule:get-name("{schedule_name}")'
-        output = output + 'Query: ' + query + '\n'
-        response, time_taken = execute_command(query)
-        output += f'Response (in {round_thousands_second_time_delta(time_taken)} secs.): {response}\n'
-        total_time = 0
-        if '"error":"a schedule with this name does not exist"' not in response:
-            output += f'Schedule {schedule_name} exists already.\n'
-            return output, True
-        else:
-            output += f'Creating schedule {schedule_name}.\n'
-            query = f'schedule:add("{schedule_name}")'
-            output = output + 'Query: ' + query + '\n'
-            response, time_taken = execute_command(query)
-            total_time += time_taken
-            output += f'Response (in {round_thousands_second_time_delta(time_taken)} secs.): {response}\n'
-
-            query = f'schedule:set-daily("{schedule_name}")'
-            output = output + 'Query: ' + query + '\n'
-            response, time_taken = execute_command(query)
-            total_time += time_taken
-            output += f'Response (in {round_thousands_second_time_delta(time_taken)} secs.): {response}\n'
-
-            query = f'schedule:set-parameter("{schedule_name}","{out_port}:voltage")'
-            output = output + 'Query: ' + query + '\n'
-            response, time_taken = execute_command(query)
-            total_time += time_taken
-            output += f'Response (in {round_thousands_second_time_delta(time_taken)} secs.): {response}\n'
-
-            # Check if the request was successful (status code 200)
-            if total_time < 3000:
-                # Print the response content (the HTML of the webpage in this case)
-                status =  True
-                output += f'{schedule_name} successfully created in {round_thousands_second_time_delta(total_time)} secs.\n\n'
-            else:
-                status =  False
-                output += f'Failed to create {schedule_name} with response: {response}\n\n'
-            time.sleep(PAUSE_BETWEEN_QUERIES)
-            return output, status
+    # Check if schedule exists already, if not, creates it.
+    (output,_) = execute_command_and_report(f'schedule:get-name("{schedule_name}")', output=output)
+    total_time = 0
+    if '"error":"a schedule with this name does not exist"' not in output:
+        output += f'Schedule {schedule_name} already exists :-).\n'
+        return output, True
     else:
-        output += f'No crescontrol reachable, nothing done.\n'
-        return output, cc_online
+        output += f'Creating schedule {schedule_name} :-).\n'
+        (output,total_time) = execute_command_and_report(f'schedule:add("{schedule_name}")', output=output, total_time=total_time)
+        (output,total_time) = execute_command_and_report(f'schedule:set-daily("{schedule_name}")', output=output, total_time=total_time)
+        (output,total_time) = execute_command_and_report(f'schedule:set-parameter("{schedule_name}","{out_port}:voltage")', output=output, total_time=total_time)
+        # Check if the request was successful (status code 200)
+        if total_time < 3000:
+            # Print the response content (the HTML of the webpage in this case)
+            status =  True
+            output += f'{schedule_name} successfully created in {round_thousands_second_time_delta(total_time)} secs.\n\n'
+        else:
+            status =  False
+            output += f'Failed to create {schedule_name} with response: {response}\n\n'
+        time.sleep(PAUSE_BETWEEN_QUERIES)
+        return output, status
 
 def send_schedules_to_crescontrol(schedule_dic):
     """
@@ -573,49 +570,23 @@ def send_schedules_to_crescontrol(schedule_dic):
     for schedule_name, schedule_and_out in schedule_dic.items():
         schedule = schedule_and_out[0]
         out_name = schedule_and_out[1]
-        output += f'Sending schedule data for schedule {schedule_name}\n'
-        sub_output, cc_online = test_crescontrol_online()
-        output += sub_output
+        output += f'Sending schedule data for schedule {schedule_name}:\n'
         total_time = 0
-        if cc_online is True:
-            query = f'schedule:set-enabled("{schedule_name}",0)'
-            output += f'Query: {query}\n'
-            response, time_taken = execute_command(query)
-            total_time += time_taken
-            output += f'Response (in {round_thousands_second_time_delta(time_taken)} secs.): {response}\n'
 
-            query = f'schedule:set-timetable("{schedule_name}","{schedule}")'
-            output += f'Query: {query}\n'
-            response, time_taken = execute_command(query)
-            total_time += time_taken
-            output += f'Response (in {round_thousands_second_time_delta(time_taken)} secs.): {response}\n'
+        (output,total_time) = execute_command_and_report(f'schedule:set-enabled("{schedule_name}",0)', output=output, total_time=total_time)
+        (output,total_time) = execute_command_and_report(f'schedule:set-timetable("{schedule_name}","{schedule}")', output=output, total_time=total_time)
+        (output,total_time) = execute_command_and_report(f'schedule:set-resolution("{schedule_name}",0.05,0.02)', output=output, total_time=total_time)
+        (output,total_time) = execute_command_and_report(f'schedule:set-enabled("{schedule_name}",1)', output=output, total_time=total_time)
+        (output,total_time) = execute_command_and_report(f'schedule:save("{schedule_name}")', output=output, total_time=total_time)
 
-            query = f'schedule:set-resolution("{schedule_name}",0.05,0.02)'
-            output += f'Query: {query}\n'
-            response, time_taken = execute_command(query)
-            total_time += time_taken
-            output += f'Response (in {round_thousands_second_time_delta(time_taken)} secs.): {response}\n'
-
-            query = f'schedule:set-enabled("{schedule_name}",1)'
-            output += f'Query: {query}\n'
-            response, time_taken = execute_command(query)
-            total_time += time_taken
-            output += f'Response (in {round_thousands_second_time_delta(time_taken)} secs.): {response}\n'
-
-            query = f'schedule:save("{schedule_name}")'
-            output += f'Query: {query}\n'
-            response, time_taken = execute_command(query)
-            total_time += time_taken
-            output += f'Response (in {round_thousands_second_time_delta(time_taken)} secs.): {response}\n'
-
-            # Check if the request was successful (status code 200)
-            if total_time < 5000:
-                # Print the response content (the HTML of the webpage in this case)
-                output += f'{schedule_name} successfully updated in {round_thousands_second_time_delta(total_time)} secs.\n\n'
-                status = True
-            else:
-                output += f'Failed to update {schedule_name} with response: {response}\n\n'
-                status = False
+        # Check if the request was successful (status code 200)
+        if total_time < 5000:
+            # Print the response content (the HTML of the webpage in this case)
+            output += f'{schedule_name} successfully updated in {round_thousands_second_time_delta(total_time)} secs :-).\n'
+            status = True
+        else:
+            output += f'Failed to update {schedule_name} with response :-(: {response}\n\n'
+            status = False
     return output, status
 
 def printAndLog(myLine, myFile):
@@ -636,7 +607,7 @@ def send_mail(email_message):
     Create an email message and sends it
     """
     email_message = MIMEText(email_message)
-    email_message['Subject'] = "Generation of schedules, queries and CresControl Responses"
+    email_message['Subject'] = "Generation of schedules script and CresControl Responses"
     email_message['From'] = SENDER_EMAIL
     email_message['Reply-to'] = SENDER_EMAIL
     email_message['To'] = RECEIVER_EMAIL

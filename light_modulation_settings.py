@@ -28,3 +28,4 @@ PAUSE_BETWEEN_QUERIES = 10                      # seconds, this to allow the CC 
 # any place on Earth.
 LATITUDE = 29.1288
 LONGITUDE = 4.3947
+TIMEZONE = 2
