@@ -51,7 +51,7 @@ if __name__ == "__main__":
             f'script:set-start-script("light_off","schedule:set-enabled(\\"schedule_3500\\",0);schedule:set-enabled(\\"schedule_5000\\",0);schedule:set-enabled(\\"schedule_385\\",0);out-a:voltage={out_all_voltage_double_push};out-b:voltage={out_all_voltage_double_push};out-c:voltage={out_all_voltage_double_push}")',
             'script:set-stop-script("light_off","schedule:set-enabled(\\"schedule_3500\\",1);schedule:set-enabled(\\"schedule_5000\\",1);schedule:set-enabled(\\"schedule_385\\",1)")',
             'script:save("light_off")',
-            'user-button:double-press-command="script:stop(\\"light_off\\")"',
+            'user-button:double-press-command="if(script:get-running(\\"light_off\\"),\\"script:stop(\\\\"light_off\\\\")\\",\\"script:start(\\\\"light_off\\\\")\\")"',
             'user-button:double-press-delay=1000',
             'system:save()'
         )
