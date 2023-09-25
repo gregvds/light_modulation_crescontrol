@@ -136,7 +136,8 @@ if __name__ == "__main__":
             lml.create_triple_plot(schedule_dic["schedule_3500"],
                                    schedule_dic["schedule_5000"],
                                    schedule_dic["schedule_385"])
-            # lml.animate_yearly_schedule(6.75,18.50,1,1,60,0.1,10)
+            # lml.animate_yearly_schedule(10)
+            # lml.create_yearly_schedule_3d_plot(10)
             # lml.create_monthly_plots()
 
         lml.printAndLog("Finished.", logFile)

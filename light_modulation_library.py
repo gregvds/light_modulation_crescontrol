@@ -16,7 +16,11 @@ import numpy as np
 from suntime import Sun
 from scipy.interpolate import UnivariateSpline
 from scipy import signal
+
+# -- Imports for plots and graphs
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+from matplotlib.widgets import Slider, RadioButtons
 import pandas as pd
 from matplotlib.animation import FuncAnimation
 
@@ -247,13 +251,9 @@ def create_intensity_data_suntime(maximum_voltage, amplitude_modulation=None, mo
     if not ((0.0 <= length_proportion) and (length_proportion <= 1.5)):
         print(f"Error: length_proportion {length_proportion} should be in the range 0.0-1.5.")
         return
+
     current_date        = date if date is not None else datetime.date.today()
     current_datetime    = datetime.datetime(current_date.year, current_date.month, current_date.day, 0, 0)  # Start at midnight
-    time_step           = datetime.timedelta(minutes=TIME_STEP_MINUTES)  # Adjustable time step
-    data_points_seconds = []  # Data points with time in seconds
-    data_points_hours   = []  # Data points with time in hours
-    max_iterations      = 24 * 60 // TIME_STEP_MINUTES  # Maximum number of iterations (1 day)
-    iterations          = 0  # Counter for iterations
     sun                 = Sun(LATITUDE, LONGITUDE)
     earliest_power_on   = convert_datetime_to_decimal_hour(sun.get_sunrise_time(current_date) + datetime.timedelta(seconds=3600*TIMEZONE))
     latest_power_off    = convert_datetime_to_decimal_hour(sun.get_sunset_time(current_date) + datetime.timedelta(seconds=3600*TIMEZONE))
@@ -271,15 +271,16 @@ def create_intensity_data_suntime(maximum_voltage, amplitude_modulation=None, mo
     # New methodology to calculate amplitude modulation based on current day length
     # compared to the longest day of the year (namely the Summer Solstice day)
     # The third root is here to pull back up a bit values (minimum = 0.73333 -> 0.90...)
-    if amplitude_modulation is None:
+    modulated_max_intensity = 1.0
+    if amplitude_modulation is None: #Default case
         modulated_max_intensity = min(1.0, math.pow((day_length/summer_solstice_day_length), (1.0/3.0)))
-    else:   # Deprecated, needs the user to guess/give a amplitude of modulation...
+    else:                            # Deprecated, needs the user to guess/give a amplitude of modulation...
         modulated_max_intensity = calculate_modulated_max_intensity(current_date, amplitude_modulation)
 
     # Modifications of begin and end of curve according to the choosen mode
     if mode == 'centered':
         # begins late and finishes early in proportion with the day duration
-        # with default length_proportion=1.0, generate a normal curve.
+        # Default length_proportion=1.0 generate a normal complete curve.
         earliest_power_on    = noon - day_length * length_proportion/2.0
         latest_power_off     = noon + day_length * length_proportion/2.0
     elif mode == 'dawn':
@@ -290,6 +291,11 @@ def create_intensity_data_suntime(maximum_voltage, amplitude_modulation=None, mo
         earliest_power_on    = latest_power_off - day_length * length_proportion
 
     # Calculates all tuples (time_in_second, intensity) for the current day
+    time_step           = datetime.timedelta(minutes=TIME_STEP_MINUTES) # Adjustable time step
+    data_points_seconds = []                                            # Data points with time in seconds
+    data_points_hours   = []                                            # Data points with time in hours
+    max_iterations      = 24 * 60 // TIME_STEP_MINUTES                  # Maximum number of iterations (1 day)
+    iterations          = 0                                             # Counter for iterations
     while iterations < max_iterations:
         intensity = calculate_intensity(current_datetime, earliest_power_on, latest_power_off, modulated_max_intensity)
         intensity = max(0,intensity)
@@ -406,6 +412,22 @@ def substract_data_points_seconds(data_points_seconds_1, data_points_seconds_2, 
               if time == time2 and time in common_times]
     return result
 
+def gate_data_points_seconds(data_points_seconds, lower_gate=1, upper_gate=10):
+    """
+    Gate the intensity values between lower_gate and upper_gate
+    """
+    gated_data_points_seconds = []
+    for (time, intensity) in data_points_seconds:
+        if intensity <= 0.01:
+            gated_data_points_seconds.append((time, intensity))
+        elif intensity <= lower_gate:
+            gated_data_points_seconds.append((time,lower_gate))
+        elif lower_gate < intensity < upper_gate:
+            gated_data_points_seconds.append((time, intensity))
+        else:
+            gated_data_points_seconds.append((time, upper_gate))
+    return gated_data_points_seconds
+
 def simplify_data_points_seconds(data_points_seconds, desired_num_points=32, ax=None):
     """
     this trims down the number of points in the schedule to 32 by default (and max allowed by CresControl)
@@ -463,6 +485,33 @@ def clean_intermediate_zeros_from_data_points_seconds(data_points_seconds):
         right_intensity = data_points_seconds[min(position+1,max_position)][1]
     return filtered_result
 
+def clean_intermediate_flats_from_data_points_seconds(data_points_seconds):
+    """
+    suppress all the intermediate data values defining flats periods to minimize
+    useless points. This can trim down the length of the schedule to less than the
+    maximum number of points allowed by CresControl, hence the incremental reduction
+    implemented in clean_and_simplify_to_desired_points().
+    """
+    filtered_result  = []
+    left_intensity = data_points_seconds[0][1]  # Initialize the left intensity
+    right_intensity   = data_points_seconds[2][1]  # Initialize the right intensity
+    position = 1
+    max_position = len(data_points_seconds)-1
+    # Iterate through the result, skipping central zero intensities
+    for time, intensity in data_points_seconds[1:-1]:
+        if (abs(left_intensity-intensity) < 0.01) and (abs(intensity-right_intensity) < 0.01)\
+           or (time < 10800 or time > 75600):
+            left_intensity = intensity
+            position +=1
+            right_intensity = data_points_seconds[min(position+1,max_position)][1]
+            # drop zero intensity between two zero intensities
+            continue
+        filtered_result.append((time, intensity))
+        left_intensity = intensity
+        position +=1
+        right_intensity = data_points_seconds[min(position+1,max_position)][1]
+    return filtered_result
+
 def clean_and_simplify_to_desired_points(data_points_seconds, desired_num_points = 32, plot = False):
     """
     The function combines both precent ones, trying to save a maximum of information
@@ -481,7 +530,7 @@ def clean_and_simplify_to_desired_points(data_points_seconds, desired_num_points
         ax = None
     while len(potential_data_points_seconds) > desired_num_points:
         number_of_data_points -=1
-        potential_data_points_seconds = clean_intermediate_zeros_from_data_points_seconds(
+        potential_data_points_seconds = clean_intermediate_flats_from_data_points_seconds(
             simplify_data_points_seconds(data_points_seconds, desired_num_points=number_of_data_points, ax=ax))
     if plot:
         plt.show()
@@ -724,12 +773,6 @@ def create_monthly_plots(day = 21):
     """
     ! Should be adapted to use new function create_intensity_data_suntime !
     """
-    earliest_power_on = 6.58  # Earliest power-on time (adjustable)
-    power_on_time_modulation_hours = 1  # Range of power-on time modulation (hours)
-    latest_power_off = 18.75  # Latest power-off time (adjustable)
-    power_off_time_modulation_hours = 1  # Range of symmetric power-off time modulation (hours)
-    transition_duration_minutes = 30  # Duration of smooth transitions at the beginning and end (minutes)
-    amplitude_modulation = 0.1  # Amplitude of the intensity modulation (e.g., ±10%)
     maximum_voltage = 10  # Maximum voltage (adjustable, e.g., 120)
     # List of months (you can customize this if needed)
     months = range(1, 13)
@@ -739,14 +782,7 @@ def create_monthly_plots(day = 21):
     for month, ax in zip(months, axs.flat):
         # Create a plot for the 1st day of the current month
         desired_date = datetime.date(datetime.date.today().year, month, day)
-        data_points_seconds, data_points_hours = create_intensity_data(earliest_power_on,
-                                                                       latest_power_off,
-                                                                       power_on_time_modulation_hours,
-                                                                       power_off_time_modulation_hours,
-                                                                       transition_duration_minutes,
-                                                                       amplitude_modulation,
-                                                                       maximum_voltage,
-                                                                       desired_date)
+        data_points_seconds, data_points_hours = create_intensity_data_suntime(maximum_voltage, date=desired_date)
         # Extract hours and intensities
         times_hours, intensities_hours = zip(*data_points_hours)
         # ax.plot(times_hours, intensities_hours, marker='o', linestyle='-', color='LightSkyBlue')
@@ -770,11 +806,9 @@ def create_monthly_plots(day = 21):
     plt.show()
 
 # Function to generate an animated plot of a year day by day
-def animate_yearly_schedule(earliest_power_on, latest_power_off, power_on_time_modulation_hours,
-                            power_off_time_modulation_hours, transition_duration_minutes,
-                            amplitude_modulation, maximum_voltage, save_path=None):
+def animate_yearly_schedule(maximum_voltage, save_path=None):
     """
-    ! Should be adapted to use new function create_intensity_data_suntime !
+    Generates an animated graph of a plain intensity curve along the year.
     """
     # Define the date range for a year (adjust as needed)
     start_date = datetime.date(datetime.date.today().year, 1, 1)
@@ -787,14 +821,7 @@ def animate_yearly_schedule(earliest_power_on, latest_power_off, power_on_time_m
     # Function to update the plot for each day
     def update_plot(date):
         ax.clear()
-        data_points_seconds, data_points_hours = create_intensity_data(earliest_power_on,
-                                                                       latest_power_off,
-                                                                       power_on_time_modulation_hours,
-                                                                       power_off_time_modulation_hours,
-                                                                       transition_duration_minutes,
-                                                                       amplitude_modulation,
-                                                                       maximum_voltage,
-                                                                       date)[0:2]
+        data_points_seconds, data_points_hours = create_intensity_data_suntime(maximum_voltage, date=date)[0:2]
         times_seconds, intensities_seconds = zip(*data_points_seconds)
         ax.plot(times_seconds, intensities_seconds, linestyle='-', color='LightSkyBlue')
         ax.set_xlim(14400, 79200)  # Customize x-axis limits
@@ -809,6 +836,69 @@ def animate_yearly_schedule(earliest_power_on, latest_power_off, power_on_time_m
     if save_path:
         anim.save(save_path, writer='pillow', fps=10)  # Save the animation to a file
     plt.show()  # Display the animated plot
+
+def create_yearly_schedule_3d_plot(maximum_voltage):
+    """
+    Generates a 3D surface plot of intensity over the course of a year.
+    """
+    # Define the date range for a year (adjust as needed)
+    start_date = datetime.date(datetime.date.today().year, 1, 1)
+    end_date = datetime.date(datetime.date.today().year, 12, 31)
+
+    # Create a figure for the 3D plot
+    fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
+    fig.subplots_adjust(top=1.1, bottom=-.1, left=-.1, right=1.1)
+
+    # Define the range of seconds in a day and days in a year
+    seconds_in_day = 86400
+    days_in_year = (end_date - start_date).days + 1
+
+    # Create arrays for X, Y, and Z
+    x = np.linspace(0, seconds_in_day, 100)  # Seconds in a day
+    y = np.arange(0, days_in_year)  # Days of the year
+    X, Y = np.meshgrid(x, y)
+    Z = np.zeros_like(X)
+
+    # Function to calculate intensity for a given day and time
+    def calculate_intensity(day, time):
+        data_points_seconds, _ = create_intensity_data_suntime(maximum_voltage, date=start_date + datetime.timedelta(days=day))[0:2]
+        times_seconds, intensities_seconds = zip(*data_points_seconds)
+        return np.interp(time, times_seconds, intensities_seconds, left=0.0, right=0.0)
+
+    # Populate Z with intensity values
+    for i in range(days_in_year):
+        for j in range(100):
+            Z[i, j] = calculate_intensity(i, x[j])
+
+    # Create the 3D surface plot
+    ax.plot_surface(X, Y, Z, cmap='viridis', alpha=0.8)
+
+    # Add iso-intensity contours at specific levels (0, 2, 4, 6, 8, and 10)
+    contour_levels = [0, 2, 4, 6, 8, 10]
+    for level in contour_levels:
+        contour = ax.contour(X, Y, Z, levels=[level], colors='red', linewidths=1)
+        ax.clabel(contour, [level], fmt=f'Intensity {level}', inline=True, fontsize=10, colors='red')
+
+    ax.set_xlabel('Seconds in a Day')
+    ax.set_ylabel('Days of the Year')
+    ax.set_zlabel('Intensity (Volt)')
+
+    # Limit the X-axis to the range of 0 to 86400 seconds (0 to 1 day)
+    ax.set_xlim(0, seconds_in_day)
+
+    # Limit the Y-axis to the range of 0 to 365 days (the entire year)
+    ax.set_ylim(0, days_in_year)
+
+    # Set the X-axis ticks at every 7200 seconds (2 hour)
+    interval = 7200
+    ax.set_xticks(np.arange(0, seconds_in_day + 1, interval))
+
+    # Set the X-axis tick labels (formatted as HH:mm)
+    ax.set_xticklabels([f'{i // 3600:02d}:{(i % 3600) // 60:02d}' for i in np.arange(0, seconds_in_day + 1, interval)])
+
+   # Set the title and show the plot
+    plt.title('Intensity Over the Year')
+    plt.show()
 
 def create_triple_plot(data_points_intensity1, data_points_intensity2, data_points_intensity3):
     """

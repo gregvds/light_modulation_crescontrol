@@ -94,6 +94,7 @@ def generate_5000K_schedule(schedule_name):
     daily_earliest_power_on,
     daily_latest_power_off,
     daily_maximum_intensity) = lml.create_intensity_data_suntime(maximum_voltage,
+                                                                 length_proportion=0.95,
                                                                  transition_duration_minutes=transition_duration_minutes)
 
     schedule_5000_dic = {
@@ -114,7 +115,7 @@ def generate_385_schedule(schedule_name):
     Generate total envelope curve for 385nm
     """
     # Parameters (you can adjust these)
-    maximum_voltage = 3  # Maximum voltage (adjustable, 0-10V)
+    maximum_voltage = 3.5  # Maximum voltage (adjustable, 0-10V)
     transition_duration_minutes = 40  # Duration of smooth transitions at the begin and end (x minutes)
 
     (data_points_seconds,
@@ -122,7 +123,7 @@ def generate_385_schedule(schedule_name):
     daily_earliest_power_on,
     daily_latest_power_off,
     daily_maximum_intensity) = lml.create_intensity_data_suntime(maximum_voltage,
-                                                                 length_proportion=0.6,
+                                                                 length_proportion=0.7,
                                                                  transition_duration_minutes=transition_duration_minutes)
 
     schedule_385_dic = {
@@ -167,18 +168,27 @@ Schedule for %s\n\
 def generate_schedules():
 
     schedule_3500_dic = generate_3500K_schedule("schedule_3500")
-    # The result is cleaned from redundant zero values and trimmed down to 32 values
-    schedule_3500 = lml.clean_and_simplify_to_desired_points(schedule_3500_dic['full_schedule'], plot = PLOT)
+    # Gating the data so the lowest values produce already light.
+    # Depending on your led array and driver, you should adjust this
+    data_points_seconds_3500 = lml.gate_data_points_seconds(schedule_3500_dic['full_schedule'], lower_gate=0.79)
+    # The result is cleaned from redundant values and trimmed down to 32 values
+    schedule_3500 = lml.clean_and_simplify_to_desired_points(data_points_seconds_3500, plot = PLOT)
 
     schedule_5000_dic = generate_5000K_schedule("schedule_5000")
     # Remove intensities of 5000K that are already given by 3500K
     data_points_seconds_5000 = lml.substract_data_points_seconds(schedule_5000_dic['full_schedule'], schedule_3500_dic['full_schedule'])
-    # The result is cleaned from redundant zero values and trimmed down to 32 values
+    # Gating the data so the lowest values produce already light.
+    # Depending on your led array and driver, you should adjust this
+    data_points_seconds_5000 = lml.gate_data_points_seconds(data_points_seconds_5000, lower_gate=0.79)
+    # The result is cleaned from redundant values and trimmed down to 32 values
     schedule_5000 = lml.clean_and_simplify_to_desired_points(data_points_seconds_5000, plot = PLOT)
 
     schedule_385_dic = generate_385_schedule("schedule_385")
-    # The result is cleaned from redundant zero values and trimmed down to 32 values
-    schedule_385 = lml.clean_and_simplify_to_desired_points(schedule_385_dic['full_schedule'], plot = PLOT)
+    # Gating the data so the lowest values produce already light.
+    # Depending on your led array and driver, you should adjust this
+    data_points_seconds_385 = lml.gate_data_points_seconds(schedule_385_dic['full_schedule'], lower_gate=0.75)
+    # The result is cleaned from redundant values and trimmed down to 32 values
+    schedule_385 = lml.clean_and_simplify_to_desired_points(data_points_seconds_385, plot = PLOT)
 
     # --------------------------------------------------------------------------
     # packing of all the schedules generated in a dictionary.
