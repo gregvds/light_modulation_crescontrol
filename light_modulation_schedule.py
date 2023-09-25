@@ -192,11 +192,12 @@ def generate_schedules():
 
     # --------------------------------------------------------------------------
     # packing of all the schedules generated in a dictionary.
-    # Key values ARE THE NAMES OF THE SCHEDULES DEFINED IN THE CRESCONTROL!
+    # !! Key values ARE THE NAMES OF THE SCHEDULES DEFINED IN THE CRESCONTROL !!
+    # !! Second element in tuple is the out name for the schedule to modulate !!
     schedule_dic = {
-        "schedule_3500" : schedule_3500,
-        "schedule_5000" : schedule_5000,
-        "schedule_385"  : schedule_385
+        "schedule_3500" : (schedule_3500, "out-a"),
+        "schedule_5000" : (schedule_5000, "out-b"),
+        "schedule_385"  : (schedule_385,  "out-c")
     }
 
     # --------------------------------------------------------------------------

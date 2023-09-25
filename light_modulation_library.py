@@ -464,6 +464,8 @@ def clean_intermediate_zeros_from_data_points_seconds(data_points_seconds):
     suppress all the data points 0.0 contiguous to two other 0.0 values to minimize
     useless points. This can trim down the length of the schedule to less than the
     maximum number of points allowed by CresControl.
+    !! See function clean_intermediate_flats_from_data_points_seconds that also
+    cleans up unnecessary points aligned of whatever constant values !!
     """
     filtered_result  = []
     left_intensity = data_points_seconds[0][1]  # Initialize the left intensity
@@ -549,19 +551,12 @@ def stringify_schedules_in_dic(schedule_dic):
     Stringify all schedules in dictionary
     """
     stringified_schedules_dic = {}
-    for (key, schedule) in schedule_dic.items():
-        stringified_schedules_dic[key] = convert_data_points_to_string(schedule)
+    for (key, (schedule, out_name)) in schedule_dic.items():
+        stringified_schedules_dic[key] = (convert_data_points_to_string(schedule), out_name)
     return stringified_schedules_dic
 
 
 # --- Communication Functions
-
-def clean_up_crescontrol_response(response):
-    """
-    Tidy up the response from CresControl.
-    split around ::, takes the second part, and suppress chars ", {, and }.
-    """
-    return response.split("::")[1].replace('"',' ').replace('{','').replace('}','')
 
 def round_thousands_second_time_delta(time_taken):
     return f'{float(time_taken):02.3f}'
@@ -580,6 +575,13 @@ def format_time_modulation_delta(time1, time2, format):
                  abs(((time1*60)%60)-((time2*60)%60)))
         formatted_time_delta = "-" + formatted_time_delta
     return formatted_time_delta
+
+def clean_up_crescontrol_response(response):
+    """
+    Tidy up the response from CresControl.
+    split around ::, takes the second part, and suppress chars ", {, and }.
+    """
+    return response.split("::")[1].replace('"',' ').replace('{','').replace('}','')
 
 def execute_command(query, clean_answer=True):
     """
@@ -610,17 +612,13 @@ def execute_command_and_report(query, output="", total_time=0):
     return output, total_time
 
 def test_crescontrol_online():
-    output = f'Testing if CresControl on ws://{CRESCONTROL_IP}:81 is accessible:\n'
     status = False
-    query = 'system:cpu-id'
-    output += f"Query: {query}\n"
-    response, time_taken = execute_command(query)
-    if CRESCONTROL_CPU_ID in response and time_taken < 1000:
-        output += f'Response (in {round_thousands_second_time_delta(time_taken)} secs.): {response}\n'
+    output = f'Testing if CresControl on ws://{CRESCONTROL_IP}:81 is accessible:\n'
+    output, time_taken = execute_command_and_report('system:cpu-id', output)
+    if CRESCONTROL_CPU_ID in output and time_taken < 1000:
         output += f'Crescontrol online :-)\n\n'
         status =  True
     else:
-        output += f'Response (in {round_thousands_second_time_delta(time_taken)} secs.): {response.text}\n'
         output += f'Unable to reach {CRESCONTROL_URL} with CPU ID {CRESCONTROL_CPU_ID} :-(: {response}\n\n'
         status =  False
     return output, status
@@ -636,11 +634,9 @@ def set_crescontrol_timezone(timezone):
     return response, time_taken
 
 def get_crescontrol_led_verbosity():
-    output = f'Set CresControl led verbosity:\n'
-    query = f'led:verbosity'
-    output = output + 'Query: ' + query + '\n'
-    response, time_taken = execute_command(query)
-    return response, time_taken
+    output = f'Get CresControl led verbosity:\n'
+    (output, time_taken) = execute_command_and_report(f'led:verbosity', output=output)
+    return output, time_taken
 
 def set_crescontrol_led_verbosity(level):
     """
@@ -651,19 +647,15 @@ def set_crescontrol_led_verbosity(level):
     """
     if value in (0,1,2,3):
         output = f'Set CresControl led verbosity:\n'
-        query = f'led:verbosity={level}'
-        output += f"Query: {query}\n"
-        (response, time_taken) = execute_command(query)
-        return response, time_taken
+        (output, time_taken) = execute_command_and_report(f'led:verbosity={level}', output=output)
+        return output, time_taken
     else:
-        return f'Faulty value. Must be between 0 and 3 included', 0.0
+        return f'Faulty value. Must be between 0 and 3 included', 0,0
 
 def get_crescontrol_websocket_remote_allow_connection():
     output = f'Get CresControl websocket remote allow connection:\n'
-    query = f'websocket:remote:allow-connection'
-    output += f"Query: {query}\n"
-    (response, time_taken) = execute_command(query)
-    return response, time_taken
+    (output, time_taken) = execute_command_and_report(f'websocket:remote:allow-connection', output=output)
+    return output, time_taken
 
 def set_crescontrol_websocket_remote_allow_connection(value):
     """
@@ -672,69 +664,69 @@ def set_crescontrol_websocket_remote_allow_connection(value):
     """
     if value in (0,1):
         output = f'Set CresControl websocket remote allow connection to {value}:\n'
-        query = f'websocket:remote:allow-connection={value}'
-        output += f"Query: {query}\n"
-        (response, time_taken) = execute_command(query)
-        return response, time_taken
+        (output, time_taken) = execute_command_and_report(f'websocket:remote:allow-connection={value}', output=output)
+        return output, time_taken
     else:
         return f'Faulty value. Must be 0 or 1', 0.0
 
 def get_crescontrol_time():
     output = f'Crescontrol time:\n'
-    query = 'time:daytime'
-    (response, time_taken) = execute_command(query)
-    return response
+    (output, time_taken) = execute_command_and_report('time:daytime', output=output)
+    return output
 
-def create_schedule_if_not_exists(schedule_name, out_port):
-    output = f'Creating schedule {schedule_name} for {out_port} if not existant:\n'
+def create_schedule_if_not_exists(schedule_name, output="", total_time=0):
+    """
+    This function creates a schedule with the given name
+    """
     status = False
+    output += f'Creating schedule {schedule_name} if not existant:\n'
     # Check if schedule exists already, if not, creates it.
-    (output,_) = execute_command_and_report(f'schedule:get-name("{schedule_name}")', output=output)
-    total_time = 0
+    (output,_) = execute_command_and_report(f'schedule:get-name("{schedule_name}")',                                output=output)
     if '"error":"a schedule with this name does not exist"' not in output:
-        output += f'Schedule {schedule_name} already exists :-).\n'
+        output += f'Schedule {schedule_name} already exists :-).\n\n'
         return output, True
     else:
         output += f'Creating schedule {schedule_name} :-).\n'
-        (output,total_time) = execute_command_and_report(f'schedule:add("{schedule_name}")', output=output, total_time=total_time)
-        (output,total_time) = execute_command_and_report(f'schedule:set-daily("{schedule_name}")', output=output, total_time=total_time)
-        (output,total_time) = execute_command_and_report(f'schedule:set-parameter("{schedule_name}","{out_port}:voltage")', output=output, total_time=total_time)
+        (output,total_time) = execute_command_and_report(f'schedule:add("{schedule_name}")',                        output=output, total_time=total_time)
+        (output,total_time) = execute_command_and_report(f'schedule:set-daily("{schedule_name}")',                  output=output, total_time=total_time)
         # Check if the request was successful (status code 200)
-        if total_time < 3000:
+        if total_time < 2000:
             # Print the response content (the HTML of the webpage in this case)
             status =  True
-            output += f'{schedule_name} successfully created in {round_thousands_second_time_delta(total_time)} secs.\n\n'
+            output += f'{schedule_name} successfully created in {round_thousands_second_time_delta(total_time)} secs :-).\n\n'
         else:
             status =  False
-            output += f'Failed to create {schedule_name} with response: {response}\n\n'
-        time.sleep(PAUSE_BETWEEN_QUERIES)
+            output += f'Failed to create {schedule_name} :-(.\n\n'
         return output, status
 
 def send_schedules_to_crescontrol(schedule_dic):
     """
-    Review the parameters of the schedule creation and adapt following your need.
+    This function sends all the schedules defined in the dictionary given.
+    keys of dic are the schedule names, content is a tuple containing the schedule
+    and the out name it has to modulate.
     """
+    status = True
     output = ''
-    status = False
-    for schedule_name, schedule_and_out in schedule_dic.items():
-        schedule = schedule_and_out[0]
-        out_name = schedule_and_out[1]
-        output += f'Sending schedule data for schedule {schedule_name}:\n'
+    for schedule_name, (schedule, out_port) in schedule_dic.items():
         total_time = 0
+        output += f'Sending schedule data for schedule {schedule_name} to modulate {out_port}:\n'
 
+        (output,total_time) = create_schedule_if_not_exists(schedule_name,                                          output=output, total_time=total_time)
         (output,total_time) = execute_command_and_report(f'schedule:set-enabled("{schedule_name}",0)',              output=output, total_time=total_time)
+        (output,total_time) = execute_command_and_report(f'schedule:set-parameter("{schedule_name}","{out_port}:voltage")', output=output, total_time=total_time)
         (output,total_time) = execute_command_and_report(f'schedule:set-timetable("{schedule_name}","{schedule}")', output=output, total_time=total_time)
         (output,total_time) = execute_command_and_report(f'schedule:set-resolution("{schedule_name}",0.05,0.02)',   output=output, total_time=total_time)
         (output,total_time) = execute_command_and_report(f'schedule:set-enabled("{schedule_name}",1)',              output=output, total_time=total_time)
         (output,total_time) = execute_command_and_report(f'schedule:save("{schedule_name}")',                       output=output, total_time=total_time)
 
         # Check if the request was successful
-        if total_time < 5000:
-            output += f'{schedule_name} successfully updated in {round_thousands_second_time_delta(total_time)} secs :-).\n'
-            status = True
+        if total_time < 8000:
+            output += f'{schedule_name} successfully updated in {round_thousands_second_time_delta(total_time)} secs :-).\n\n'
+            status = status and True
         else:
-            output += f'Failed to update {schedule_name} with response :-(: {response}\n\n'
-            status = False
+            output += f'Failed to update {schedule_name} :-(.\n\n'
+            status = status and False
+        time.sleep(PAUSE_BETWEEN_QUERIES)
     return output, status
 
 def printAndLog(myLine, myFile):

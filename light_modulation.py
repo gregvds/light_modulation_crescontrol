@@ -62,16 +62,10 @@ if __name__ == "__main__":
 
         string_schedule_dic = lml.stringify_schedules_in_dic(schedule_dic)
         lml.printAndLog("Produced schedules:\n", logFile)
-        for schedule_name, schedule_string in string_schedule_dic.items():
-            lml.printAndLog(f'Schedule {schedule_name}:\n{schedule_string}\n', logFile)
+        for schedule_name, (schedule_string, out_name) in string_schedule_dic.items():
+            lml.printAndLog(f'Schedule {schedule_name} for {out_name}:\n{schedule_string}\n', logFile)
         lml.printAndLog('\n\n', logFile)
 
-        # Dictionary linking schedule_name and output of CresControl
-        schedules_names_params_dic = {
-            "schedule_3500" : "out-a",
-            "schedule_5000" : "out-b",
-            "schedule_385"  : "out-c"
-        }
         print(result_for_mail)
 
         if not args.debug:
@@ -86,26 +80,17 @@ if __name__ == "__main__":
                 lml.printAndLog(result, logFile)
                 result_for_mail += result
                 result_for_mail += "\n"
+
                 # Post of schedules to CresControl
-                for schedule_name, _ in schedule_dic.items():
-                    result, status = lml.create_schedule_if_not_exists(schedule_name, schedules_names_params_dic[schedule_name])
-                    lml.printAndLog(result, logFile)
-                    result_for_mail += result
-                    result_for_mail += "\n"
-                    if status is True:
-                        single_schedule_dic = {schedule_name : [string_schedule_dic[schedule_name], schedules_names_params_dic[schedule_name]]}
-                        result, status2 = lml.send_schedules_to_crescontrol(single_schedule_dic)
-                        lml.printAndLog(result, logFile)
-                        if status2 is True:
-                            lml.printAndLog('Schedule sent.\n\n', logFile)
-                        else:
-                            lml.printAndLog(f'Problem sending schedule {schedule_name}.\n', logFile)
-                        result_for_mail += result
-                        result_for_mail += "\n"
-                    else:
-                        lml.printAndLog(f'Problem during creation of schedule {schedule_name}.\n', logFile)
-                    #result_for_mail += result
-                    #result_for_mail += "\n"
+                print(string_schedule_dic)
+                result, status2 = lml.send_schedules_to_crescontrol(string_schedule_dic)
+                lml.printAndLog(result, logFile)
+                if status2 is True:
+                    lml.printAndLog('Schedules sent :-).\n\n', logFile)
+                else:
+                    lml.printAndLog(f'Problem sending schedules :-(.\n', logFile)
+                result_for_mail += result
+                result_for_mail += "\n"
 
                 # Currently, something somehow enables wrongly the switch-12v...
                 # Let's disable it for now if enabled at this time:
@@ -133,9 +118,9 @@ if __name__ == "__main__":
             # DEBUG
             # These plots are intended to test and show the effect of the yearly
             # modulation
-            lml.create_triple_plot(schedule_dic["schedule_3500"],
-                                   schedule_dic["schedule_5000"],
-                                   schedule_dic["schedule_385"])
+            lml.create_triple_plot(schedule_dic["schedule_3500"][0],
+                                   schedule_dic["schedule_5000"][0],
+                                   schedule_dic["schedule_385"][0])
             # lml.animate_yearly_schedule(10)
             # lml.create_yearly_schedule_3d_plot(10)
             # lml.create_monthly_plots()
