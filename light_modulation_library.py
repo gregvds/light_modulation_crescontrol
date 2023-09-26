@@ -16,6 +16,8 @@ import numpy as np
 from suntime import Sun
 from scipy.interpolate import UnivariateSpline
 from scipy import signal
+from scipy.interpolate import interp1d
+from scipy.integrate import trapz, simps, quad
 
 # -- Imports for plots and graphs
 import matplotlib.pyplot as plt
@@ -29,6 +31,7 @@ import time
 import socket
 import websocket
 import requests
+import json
 import smtplib
 from email.mime.text import MIMEText
 
@@ -50,11 +53,14 @@ def convert_human_hour_to_decimal_hour(hours_double_point_minutes_string):
 def convert_datetime_to_decimal_hour(datetime):
     return(datetime.hour + datetime.minute/60 + datetime.second/3600)
 
-def calculate_intensity(current_time, earliest_power_on, latest_power_off, amplitude_modulation):
+def calculate_intensity(current_time, earliest_power_on, latest_power_off, amplitude_modulation, mode="cos"):
     """
     Function to calculate intensity based on time of day - produce a simple cosine
     begining at earliest_power_on, ending at latest_power_off and reaching amplitude_modulation
     """
+    if mode not in ("cos", "cos2", "cos3"):
+        print(f"Error: mode received {mode} not recognized.\nPlease set mode to 'cos, 'cos2 or 'cos3'.")
+        return
     # Calculate the current time in hours
     current_hour = convert_datetime_to_decimal_hour(current_time)
     # Calculate the fraction of the day passed
@@ -64,7 +70,12 @@ def calculate_intensity(current_time, earliest_power_on, latest_power_off, ampli
     # Calculate a simple intensity using the positive half of the cosine curve
     # from earliest_power_on to latest_power_of
     if 0.0 <= fraction_of_day and fraction_of_day <= 1.0:
-        intensity = max(0, math.cos(cosine_angle) * amplitude_modulation)
+        if mode == "cos":
+            intensity = max(0, math.cos(cosine_angle) * amplitude_modulation)
+        elif mode == "cos2":
+            intensity = max(0, math.cos(-(math.pi/2) + (math.pi/2)*math.cos(cosine_angle)) * amplitude_modulation)
+        else:
+            intensity = max(0, math.cos(-(math.pi/2) + (math.pi/2)*math.cos(-(math.pi/2) + (math.pi/2)*math.cos(cosine_angle))) * amplitude_modulation)
     else:
         intensity = 0.0
     return intensity
@@ -104,7 +115,7 @@ def smooth_transition_intensity(data_points_seconds, earliest_power_on, latest_p
             smoothed_data_points_seconds.append((time, intensity))
         position_in_data += 1
     while smoothing_iteration > 1:
-        smoothing_iteration-=1
+        smoothing_iteration -= 1
         smoothed_data_points_seconds = smooth_transition_intensity(smoothed_data_points_seconds,
                                                                    earliest_power_on,
                                                                    latest_power_off,
@@ -116,6 +127,7 @@ def smooth_transition_intensity(data_points_seconds, earliest_power_on, latest_p
 def calculate_modulation_angle(current_date):
     """
     Function to compute the modulation angle according to day in the year
+    !! This methodology is obsolete, please use create_intensity_data_suntime !!
     """
     # Convert current_date to a datetime with time set to midnight
     current_datetime = datetime.datetime(current_date.year, current_date.month, current_date.day, 0, 0)
@@ -128,6 +140,7 @@ def calculate_modulation_angle(current_date):
 def calculate_modulated_max_intensity(current_date, amplitude_modulation):
     """
     Function to calculate the modulated maximum intensity based on the current date
+    !! This methodology is obsolete, please use create_intensity_data_suntime !!
     """
     max_intensity_modulation_angle = calculate_modulation_angle(current_date)
     # Calculate the modulated maximum intensity
@@ -138,7 +151,7 @@ def calculate_modulated_max_intensity(current_date, amplitude_modulation):
 def calculate_modulated_earliest_power_on(current_date, earliest_power_on, power_on_time_modulation_hours):
     """
     Function to calculate the modulated earliest_power_on based on the current date
-    ! Obsolete since create_intensity_data_suntime !
+    !! This methodology is obsolete, please use create_intensity_data_suntime !!
     """
     power_on_time_modulation_angle = calculate_modulation_angle(current_date)
     # Calculate the modulated earliest_power_on
@@ -148,7 +161,7 @@ def calculate_modulated_earliest_power_on(current_date, earliest_power_on, power
 def calculate_modulated_latest_power_off(current_date, latest_power_off, power_off_time_modulation_hours):
     """
     Function to calculate the modulated latest_power_off based on the current date
-    ! Obsolete since create_intensity_data_suntime !
+    !! This methodology is obsolete, please use create_intensity_data_suntime !!
     """
     power_off_time_modulation_angle = calculate_modulation_angle(current_date)
     # Calculate the modulated latest_power_off
@@ -233,7 +246,7 @@ def get_winter_solstice_sunset(time_zone=2):
     #print(equinox_sunset_time)
     return convert_datetime_to_decimal_hour(equinox_sunset_time)
 
-def create_intensity_data_suntime(maximum_voltage, amplitude_modulation=None, mode="centered", length_proportion=1.0, date=None, smoothing=True, transition_duration_minutes=60):
+def create_intensity_data_suntime(maximum_voltage, amplitude_modulation=None, mode="centered", curve_mode="cos", length_proportion=1.0, date=None, smoothing=True, transition_duration_minutes=60):
     """
     Create a list of times and intensities throughout the day (packed in tuples).
     This function uses latitude and longitude to generate earliest_power_on and
@@ -242,7 +255,8 @@ def create_intensity_data_suntime(maximum_voltage, amplitude_modulation=None, mo
     - 'centered' (default) produces a curve centered on noon during a given proportion of the duration of the current day
     - 'dawn' produces a curve from sunrise during a given proportion of the duration of the current day
     - 'dusk' produces a curve before sunset during a given proportion of the duration of the current day
-    By default the length_proportion = 1.0 but takes a value between 0.0 and 1.5
+    By default the length_proportion = 1.0 but can take a value between 0.0 and 1.5 in order to shrink inside
+    or extend beyond daylight normal duration.
     """
     # check inputs for proper content and values
     if mode not in ('centered', 'dawn', 'dusk'):
@@ -275,6 +289,9 @@ def create_intensity_data_suntime(maximum_voltage, amplitude_modulation=None, mo
     if amplitude_modulation is None: #Default case
         modulated_max_intensity = min(1.0, math.pow((day_length/summer_solstice_day_length), (1.0/3.0)))
     else:                            # Deprecated, needs the user to guess/give a amplitude of modulation...
+        print(f"An amplitude modulation of {amplitude_modulation} has been received.")
+        print(f"We are forced to use a less precise method to calculate the yearly modulated maximum intensity.")
+        print(f"Please do not define the argument 'amplitude_modulation' in order to use the more precise approach.")
         modulated_max_intensity = calculate_modulated_max_intensity(current_date, amplitude_modulation)
 
     # Modifications of begin and end of curve according to the choosen mode
@@ -297,7 +314,7 @@ def create_intensity_data_suntime(maximum_voltage, amplitude_modulation=None, mo
     max_iterations      = 24 * 60 // TIME_STEP_MINUTES                  # Maximum number of iterations (1 day)
     iterations          = 0                                             # Counter for iterations
     while iterations < max_iterations:
-        intensity = calculate_intensity(current_datetime, earliest_power_on, latest_power_off, modulated_max_intensity)
+        intensity = calculate_intensity(current_datetime, earliest_power_on, latest_power_off, modulated_max_intensity, mode=curve_mode)
         intensity = max(0,intensity)
         # Calculate time in seconds, starting from midnight of the current day
         time_in_seconds = int((current_datetime - datetime.datetime(current_date.year, current_date.month, current_date.day)).total_seconds())
@@ -352,6 +369,7 @@ def create_intensity_data(earliest_power_on,
     smoothing_iteration = 1
     data_points_seconds = smooth_transition_intensity(data_points_seconds, earliest_power_on, latest_power_off, transition_duration_minutes, overspill_proportion, smoothing_iteration)
     return scale_data_points_seconds(data_points_seconds, maximum_voltage), scale_data_points_seconds(data_points_hours, maximum_voltage), earliest_power_on, latest_power_off, modulated_max_intensity
+
 
 # -- Functions more directly linked to produce data_points for crescontrol -----
 
@@ -412,20 +430,28 @@ def substract_data_points_seconds(data_points_seconds_1, data_points_seconds_2, 
               if time == time2 and time in common_times]
     return result
 
-def gate_data_points_seconds(data_points_seconds, lower_gate=1, upper_gate=10):
+def gate_data_points_seconds(data_points_seconds, treshold=0.01, lower_gate=1, upper_gate=None):
     """
-    Gate the intensity values between lower_gate and upper_gate
+    Gate the intensity values between lower_gate and upper_gate.
+    Intensity values below treshold are zeroed.
     """
-    gated_data_points_seconds = []
+    # We first retrieve the maximum intensity of the schedule
+    max_intensity = 0
     for (time, intensity) in data_points_seconds:
-        if intensity <= 0.01:
-            gated_data_points_seconds.append((time, intensity))
-        elif intensity <= lower_gate:
-            gated_data_points_seconds.append((time,lower_gate))
-        elif lower_gate < intensity < upper_gate:
-            gated_data_points_seconds.append((time, intensity))
+        max_intensity = max(max_intensity, intensity)
+    # If no upper_gate is given, maximum intensity should be kept so
+    if upper_gate is None:
+        upper_gate = max_intensity
+    # Now we can scale the intensity values that are bigger than threshold
+    # between the lower_gate and upper_gate
+    gated_data_points_seconds = []
+    gating_factor = (upper_gate-lower_gate)/(max_intensity-treshold)
+    for (time, intensity) in data_points_seconds:
+        if intensity <= treshold:
+            gated_data_points_seconds.append((time, 0.0))
         else:
-            gated_data_points_seconds.append((time, upper_gate))
+            gated_intensity = lower_gate + ((intensity-treshold)*gating_factor)
+            gated_data_points_seconds.append((time, gated_intensity))
     return gated_data_points_seconds
 
 def simplify_data_points_seconds(data_points_seconds, desired_num_points=32, ax=None):
@@ -459,7 +485,7 @@ def simplify_data_points_seconds(data_points_seconds, desired_num_points=32, ax=
     # ensures that no negative values were introduced by the spline computation
     return data_points_intensities
 
-def clean_intermediate_zeros_from_data_points_seconds(data_points_seconds):
+def clean_intermediate_zeros_from_data_points_seconds(data_points_seconds, treshold=0.01):
     """
     suppress all the data points 0.0 contiguous to two other 0.0 values to minimize
     useless points. This can trim down the length of the schedule to less than the
@@ -474,7 +500,7 @@ def clean_intermediate_zeros_from_data_points_seconds(data_points_seconds):
     max_position = len(data_points_seconds)-1
     # Iterate through the result, skipping central zero intensities
     for time, intensity in data_points_seconds[1:-1]:
-        if (left_intensity < 0.01 and intensity < 0.01 and right_intensity < 0.01)\
+        if (left_intensity < treshold and intensity < treshold and right_intensity < treshold)\
            or (time < 10800 or time > 75600):
             left_intensity = intensity
             position +=1
@@ -487,7 +513,7 @@ def clean_intermediate_zeros_from_data_points_seconds(data_points_seconds):
         right_intensity = data_points_seconds[min(position+1,max_position)][1]
     return filtered_result
 
-def clean_intermediate_flats_from_data_points_seconds(data_points_seconds):
+def clean_intermediate_flats_from_data_points_seconds(data_points_seconds, treshold=0.01):
     """
     suppress all the intermediate data values defining flats periods to minimize
     useless points. This can trim down the length of the schedule to less than the
@@ -501,7 +527,7 @@ def clean_intermediate_flats_from_data_points_seconds(data_points_seconds):
     max_position = len(data_points_seconds)-1
     # Iterate through the result, skipping central zero intensities
     for time, intensity in data_points_seconds[1:-1]:
-        if (abs(left_intensity-intensity) < 0.01) and (abs(intensity-right_intensity) < 0.01)\
+        if (abs(left_intensity-intensity) < treshold) and (abs(intensity-right_intensity) < treshold)\
            or (time < 10800 or time > 75600):
             left_intensity = intensity
             position +=1
@@ -514,7 +540,7 @@ def clean_intermediate_flats_from_data_points_seconds(data_points_seconds):
         right_intensity = data_points_seconds[min(position+1,max_position)][1]
     return filtered_result
 
-def clean_and_simplify_to_desired_points(data_points_seconds, desired_num_points = 32, plot = False):
+def clean_and_simplify_to_desired_points(data_points_seconds, desired_num_points=32, plot=False):
     """
     The function combines both precent ones, trying to save a maximum of information
     while trimming down the schedule to 32 points such as allowed by the Crescontrol
@@ -538,12 +564,12 @@ def clean_and_simplify_to_desired_points(data_points_seconds, desired_num_points
         plt.show()
     return potential_data_points_seconds
 
-def convert_data_points_to_string(data_points_seconds, decimal_places = 2):
+def convert_data_points_to_string(data_points_seconds, decimal_places=2, minimum_intensity=0.00, maximum_intensity=10.0):
     """
     Function to output proper string from data_points_seconds
     """
     # Create a string representation with brackets
-    data_string = "[" + ",".join([f"[{int(time)},{min(max(0.00,intensity),10.00):.{decimal_places}f}]" for time, intensity in data_points_seconds]) + "]"
+    data_string = "[" + ",".join([f"[{int(time)},{min(max(minimum_intensity,intensity),maximum_intensity):.{decimal_places}f}]" for time, intensity in data_points_seconds]) + "]"
     return data_string
 
 def stringify_schedules_in_dic(schedule_dic):
@@ -556,7 +582,7 @@ def stringify_schedules_in_dic(schedule_dic):
     return stringified_schedules_dic
 
 
-# --- Communication Functions
+# --- Functions for communication with the CresControl -------------------------
 
 def round_thousands_second_time_delta(time_taken):
     return f'{float(time_taken):02.3f}'
@@ -729,18 +755,89 @@ def send_schedules_to_crescontrol(schedule_dic):
         time.sleep(PAUSE_BETWEEN_QUERIES)
     return output, status
 
-def printAndLog(myLine, myFile):
-    '''
-    Print something and writes it also to given log file
-    '''
-    print(myLine)
-    myFile.write(myLine+'\n')
+
+
+# --- Other functions ----------------------------------------------------------
+
+def get_module_json(module_name):
+    """
+    This function download the json for the named module
+    """
+    response = requests.get(f'https://raw.cre.science/products/modules/modules/{module_name}.json')
+    with open(f'./{module_name}.json', mode = 'wb') as file:
+        file.write(response.content)
+    #print(response.content)
+    f = f'./{module_name}.json'
+    records = json.loads(open(f).read())
+    #print(json.dumps(records, indent=4, separators=(", ",": ")))
+    return records
+
+def interpolate_value_for_i(module_json_dic, spec, i_value):
+    """
+    This function interpolate the value of spec ("I_U" or "I_photon_efficiency")
+    # according to intensity (Amper) based on the
+    measures provided by the module json dictionary under entry 'spec'
+    """
+    # Extract x and y values into separate lists
+    i_values, u_values = zip(*module_json_dic[spec])
+
+    # Create an interpolation function using scipy's interp1d
+    interpolation_function = interp1d(i_values, u_values, kind='linear', fill_value='extrapolate')
+
+    # Interpolate the u value for the desired i value
+    u_value = interpolation_function(i_value)
+    return u_value
+
+def get_u_for_i(module_json_dic, i_value):
+    """
+    Each module has its own evolution of tension according to intensity. This
+    relation has been measured by Cre.Science and is available in the json file.
+    """
+    return interpolate_value_for_i(module_json_dic, "I_U", i_value)
+
+def get_ppe_for_i(module_json_dic, i_value):
+    """
+    Each module has its own evolution of PPE according to intensity. This
+    relation has been measured by Cre.Science and is available in the json file.
+    """
+    return interpolate_value_for_i(module_json_dic, "I_photon_efficiency", i_value)
+
+def get_dli_by_m2(data_points_seconds, driver_maximum_intensity, module_json_dic):
+    """
+    This function calculates DLI (µmol/m²/day) as = PPE(I)*U(I)*I, integrated
+    Throughout the scheduled intensities I.
+    """
+    # Extract time and dim volt values into separate lists
+    t_values, v_values = zip(*data_points_seconds)
+
+    # Calculate intensies I (A) from dim Volt and driver maximum intensity,
+    # tension U (V) =f(I) from measured data from the module json,
+    # PPE (µmol/J) =f(I) from measured data from the module json,
+    # PPF (µmol/s) = PPE*I*U
+    i_values = [v/10.0*driver_maximum_intensity/1000 for v in v_values]
+    u_values = [get_u_for_i(module_json_dic, i_value) for i_value in i_values]
+    ppf_values = [i_values[i]*u_values[j]*get_ppe_for_i(module_json_dic, i_values[i])
+                    for i in range(len(i_values))
+                    for j in range(len(u_values))
+                    if i == j]
+
+    # Calculates DLI by integrating PPF according to schedule using the Simpson's rule.
+    dli_by_m2 = simps(ppf_values, t_values)
+    return dli_by_m2
+
 
 def get_local_ip():
     return [l for l in ([ip for ip in socket.gethostbyname_ex(socket.gethostname())[2] if not ip.startswith("127.")][:1],
                         [[(s.connect(('8.8.8.8', 53)),
                            s.getsockname()[0],
                            s.close()) for s in [socket.socket(socket.AF_INET, socket.SOCK_DGRAM)]][0][1]]) if l][0][0]
+
+def printAndLog(myLine, myFile):
+    '''
+    Print something and writes it also to given log file
+    '''
+    print(myLine)
+    myFile.write(myLine+'\n')
 
 def send_mail(email_message):
     """
@@ -760,10 +857,10 @@ def send_mail(email_message):
 
 # --- Supplementary functions, for debug, plotting and so on -------------------
 
-# Function to create subplots for each Xth day of the month
 def create_monthly_plots(day = 21):
     """
-    ! Should be adapted to use new function create_intensity_data_suntime !
+    Function to create subplots for each Xth day of the month.
+    Demo of capability.
     """
     maximum_voltage = 10  # Maximum voltage (adjustable, e.g., 120)
     # List of months (you can customize this if needed)
@@ -797,10 +894,10 @@ def create_monthly_plots(day = 21):
     plt.tight_layout()
     plt.show()
 
-# Function to generate an animated plot of a year day by day
 def animate_yearly_schedule(maximum_voltage, save_path=None):
     """
     Generates an animated graph of a plain intensity curve along the year.
+    Demo of capability.
     """
     # Define the date range for a year (adjust as needed)
     start_date = datetime.date(datetime.date.today().year, 1, 1)
@@ -832,6 +929,7 @@ def animate_yearly_schedule(maximum_voltage, save_path=None):
 def create_yearly_schedule_3d_plot(maximum_voltage):
     """
     Generates a 3D surface plot of intensity over the course of a year.
+    Demo of capability.
     """
     # Define the date range for a year (adjust as needed)
     start_date = datetime.date(datetime.date.today().year, 1, 1)
@@ -895,6 +993,7 @@ def create_yearly_schedule_3d_plot(maximum_voltage):
 def create_triple_plot(data_points_intensity1, data_points_intensity2, data_points_intensity3):
     """
     Function to plot three data_points_intensities
+    Demo of capability and debug/confirmation of schedules generated
     """
     # You can define labels for each dataset
     label1 = "3500K"
