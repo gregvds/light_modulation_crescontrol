@@ -148,26 +148,6 @@ def calculate_modulated_max_intensity(current_date, amplitude_modulation):
     modulated_max_intensity = min_intensity + (amplitude_modulation/2.0 * math.cos(max_intensity_modulation_angle))
     return modulated_max_intensity
 
-def calculate_modulated_earliest_power_on(current_date, earliest_power_on, power_on_time_modulation_hours):
-    """
-    Function to calculate the modulated earliest_power_on based on the current date
-    !! This methodology is obsolete, please use create_intensity_data_suntime !!
-    """
-    power_on_time_modulation_angle = calculate_modulation_angle(current_date)
-    # Calculate the modulated earliest_power_on
-    modulated_earliest_power_on = earliest_power_on - (power_on_time_modulation_hours * math.cos(power_on_time_modulation_angle))
-    return modulated_earliest_power_on
-
-def calculate_modulated_latest_power_off(current_date, latest_power_off, power_off_time_modulation_hours):
-    """
-    Function to calculate the modulated latest_power_off based on the current date
-    !! This methodology is obsolete, please use create_intensity_data_suntime !!
-    """
-    power_off_time_modulation_angle = calculate_modulation_angle(current_date)
-    # Calculate the modulated latest_power_off
-    modulated_latest_power_off = latest_power_off + (power_off_time_modulation_hours * math.cos(power_off_time_modulation_angle))
-    return modulated_latest_power_off
-
 def get_equinox_sunrise(time_zone=2):
     """
     This function gives the hour of sunrise at Equinox, used to evaluate the
@@ -246,6 +226,68 @@ def get_winter_solstice_sunset(time_zone=2):
     #print(equinox_sunset_time)
     return convert_datetime_to_decimal_hour(equinox_sunset_time)
 
+def mod_on_off_times(earliest_power_on, latest_power_off, mode='centered', length_proportion=1.0):
+    """
+    Moves the times of power_on and power_off according to mode.
+    """
+    day_length = latest_power_off - earliest_power_on
+    noon = (earliest_power_on + latest_power_off)/2.0
+    # Modifications of begin and end of curve according to the choosen mode
+    if mode == 'centered':
+        # begins late and finishes early in proportion with the day duration
+        # Default length_proportion=1.0 generate a normal complete curve.
+        earliest_power_on    = noon - day_length * length_proportion/2.0
+        latest_power_off     = noon + day_length * length_proportion/2.0
+    elif mode == 'dawn':
+        # finishes early in proportion with the day duration
+        latest_power_off     = earliest_power_on + day_length * length_proportion
+    elif mode == 'dusk':
+        # begins late in proportion with the day duration
+        earliest_power_on    = latest_power_off - day_length * length_proportion
+    return earliest_power_on, latest_power_off
+
+def get_modulated_max_intensity(current_date, earliest_power_on, latest_power_off, amplitude_modulation=None):
+    """
+    """
+    day_length = latest_power_off - earliest_power_on
+    summer_solstice_day_length = get_summer_solstice_sunset() - get_summer_solstice_sunrise()
+
+    # New methodology to calculate amplitude modulation based on current day length
+    # compared to the longest day of the year (namely the Summer Solstice day)
+    # The third root is here to pull back up a bit values (minimum = 0.73333 -> 0.90...)
+    modulated_max_intensity = 1.0
+    if amplitude_modulation is None: #Default case
+        modulated_max_intensity = min(1.0, math.pow((day_length/summer_solstice_day_length), (1.0/3.0)))
+    else:                            # Deprecated, needs the user to guess/give a amplitude of modulation...
+        print(f"An amplitude modulation of {amplitude_modulation} has been received.")
+        print(f"We are forced to use a less precise method to calculate the yearly modulated maximum intensity.")
+        print(f"Please do not define the argument 'amplitude_modulation' in order to use the more precise approach.")
+        modulated_max_intensity = calculate_modulated_max_intensity(current_date, amplitude_modulation)
+    return modulated_max_intensity
+
+def calculate_Schedule(current_date, earliest_power_on, latest_power_off, modulated_max_intensity, curve_mode='cos'):
+    """
+    """
+    # Calculates all tuples (time_in_second, intensity) for the current day
+    current_datetime    = datetime.datetime(current_date.year, current_date.month, current_date.day, 0, 0)  # Start at midnight
+    time_step           = datetime.timedelta(minutes=TIME_STEP_MINUTES) # Adjustable time step
+    data_points_seconds = []                                            # Data points with time in seconds
+    data_points_hours   = []                                            # Data points with time in hours
+    max_iterations      = 24 * 60 // TIME_STEP_MINUTES                  # Maximum number of iterations (1 day)
+    iterations          = 0                                             # Counter for iterations
+    while iterations < max_iterations:
+        intensity = calculate_intensity(current_datetime, earliest_power_on, latest_power_off, modulated_max_intensity, mode=curve_mode)
+        intensity = max(0,intensity)
+        # Calculate time in seconds, starting from midnight of the current day
+        time_in_seconds = int((current_datetime - datetime.datetime(current_date.year, current_date.month, current_date.day)).total_seconds())
+        data_points_seconds.append((time_in_seconds, intensity))
+        # Calculate current hour for the hours version
+        current_hour = current_datetime.hour + current_datetime.minute / 60
+        data_points_hours.append((current_hour, intensity))  # Store data with time in hours
+        current_datetime += time_step
+        iterations += 1
+    return data_points_seconds, data_points_hours
+
 def create_intensity_data_suntime(maximum_voltage, amplitude_modulation=None, mode="centered", curve_mode="cos", length_proportion=1.0, date=None, smoothing=True, transition_duration_minutes=60):
     """
     Create a list of times and intensities throughout the day (packed in tuples).
@@ -265,109 +307,27 @@ def create_intensity_data_suntime(maximum_voltage, amplitude_modulation=None, mo
     if not ((0.0 <= length_proportion) and (length_proportion <= 1.5)):
         print(f"Error: length_proportion {length_proportion} should be in the range 0.0-1.5.")
         return
-
     current_date        = date if date is not None else datetime.date.today()
-    current_datetime    = datetime.datetime(current_date.year, current_date.month, current_date.day, 0, 0)  # Start at midnight
+
+    # Calculates power ON/OFF times and maximum intensity for the day
     sun                 = Sun(LATITUDE, LONGITUDE)
     earliest_power_on   = convert_datetime_to_decimal_hour(sun.get_sunrise_time(current_date) + datetime.timedelta(seconds=3600*TIMEZONE))
     latest_power_off    = convert_datetime_to_decimal_hour(sun.get_sunset_time(current_date) + datetime.timedelta(seconds=3600*TIMEZONE))
-    day_length = latest_power_off - earliest_power_on
-    noon = (earliest_power_on + latest_power_off)/2.0
+    modulated_max_intensity = get_modulated_max_intensity(current_date, earliest_power_on, latest_power_off, amplitude_modulation=amplitude_modulation)
 
-    equinox_day_length = get_equinox_sunset()-get_equinox_sunrise()
-    #print(f'Proportion of current day length vs Equinox day length: {day_length/equinox_day_length}')
-    summer_solstice_day_length = get_summer_solstice_sunset() - get_summer_solstice_sunrise()
-    #print(f'Proportion of current day length vs Summer Solstice day length: {day_length/summer_solstice_day_length}')
-    winter_solstice_day_length = get_winter_solstice_sunset() - get_winter_solstice_sunrise()
-    #print(f'Proportion of current day length vs Winter Solstice day length: {day_length/winter_solstice_day_length}')
-    #print(f'Proportion of Winter Solstice day length vs Summer Solstice day length: {winter_solstice_day_length/summer_solstice_day_length}')
+    # moves power ON and OFF times according to the mode and the length proportion
+    (earliest_power_on, latest_power_off) = mod_on_off_times(earliest_power_on, latest_power_off, mode=mode, length_proportion=length_proportion)
 
-    # New methodology to calculate amplitude modulation based on current day length
-    # compared to the longest day of the year (namely the Summer Solstice day)
-    # The third root is here to pull back up a bit values (minimum = 0.73333 -> 0.90...)
-    modulated_max_intensity = 1.0
-    if amplitude_modulation is None: #Default case
-        modulated_max_intensity = min(1.0, math.pow((day_length/summer_solstice_day_length), (1.0/3.0)))
-    else:                            # Deprecated, needs the user to guess/give a amplitude of modulation...
-        print(f"An amplitude modulation of {amplitude_modulation} has been received.")
-        print(f"We are forced to use a less precise method to calculate the yearly modulated maximum intensity.")
-        print(f"Please do not define the argument 'amplitude_modulation' in order to use the more precise approach.")
-        modulated_max_intensity = calculate_modulated_max_intensity(current_date, amplitude_modulation)
+    # generates schedule for the current day with its power ON/OFF times, max intensity and curve_mode
+    (data_points_seconds, data_points_hours) = calculate_Schedule(current_date, earliest_power_on, latest_power_off, modulated_max_intensity, curve_mode=curve_mode)
 
-    # Modifications of begin and end of curve according to the choosen mode
-    if mode == 'centered':
-        # begins late and finishes early in proportion with the day duration
-        # Default length_proportion=1.0 generate a normal complete curve.
-        earliest_power_on    = noon - day_length * length_proportion/2.0
-        latest_power_off     = noon + day_length * length_proportion/2.0
-    elif mode == 'dawn':
-        # finishes early in proportion with the day duration
-        latest_power_off     = earliest_power_on + day_length * length_proportion
-    elif mode == 'dusk':
-        # begins late in proportion with the day duration
-        earliest_power_on    = latest_power_off - day_length * length_proportion
-
-    # Calculates all tuples (time_in_second, intensity) for the current day
-    time_step           = datetime.timedelta(minutes=TIME_STEP_MINUTES) # Adjustable time step
-    data_points_seconds = []                                            # Data points with time in seconds
-    data_points_hours   = []                                            # Data points with time in hours
-    max_iterations      = 24 * 60 // TIME_STEP_MINUTES                  # Maximum number of iterations (1 day)
-    iterations          = 0                                             # Counter for iterations
-    while iterations < max_iterations:
-        intensity = calculate_intensity(current_datetime, earliest_power_on, latest_power_off, modulated_max_intensity, mode=curve_mode)
-        intensity = max(0,intensity)
-        # Calculate time in seconds, starting from midnight of the current day
-        time_in_seconds = int((current_datetime - datetime.datetime(current_date.year, current_date.month, current_date.day)).total_seconds())
-        data_points_seconds.append((time_in_seconds, intensity))
-        # Calculate current hour for the hours version
-        current_hour = current_datetime.hour + current_datetime.minute / 60
-        data_points_hours.append((current_hour, intensity))  # Store data with time in hours
-        current_datetime += time_step
-        iterations += 1
-
-    # smooth begin and end of curve
+    # Adds smoothing to begin and end of curve if required
     if smoothing is True:
         overspill_proportion = 0.85
         smoothing_iteration = 1
         data_points_seconds = smooth_transition_intensity(data_points_seconds, earliest_power_on, latest_power_off, transition_duration_minutes, overspill_proportion, smoothing_iteration)
-    return scale_data_points_seconds(data_points_seconds, maximum_voltage), scale_data_points_seconds(data_points_hours, maximum_voltage), earliest_power_on, latest_power_off, modulated_max_intensity
 
-def create_intensity_data(earliest_power_on,
-                          latest_power_off,
-                          power_on_time_modulation_hours,
-                          power_off_time_modulation_hours,
-                          transition_duration_minutes,
-                          amplitude_modulation,
-                          maximum_voltage,
-                          date=None):
-    """
-    Create a list of times and intensities throughout the day (packed in tuples).
-    !! This methodology is obsolete, please use create_intensity_data_suntime !!
-    """
-    current_date        = date if date is not None else datetime.date.today()
-    current_datetime    = datetime.datetime(current_date.year, current_date.month, current_date.day, 0, 0)  # Start at midnight
-    time_step           = datetime.timedelta(minutes=TIME_STEP_MINUTES)  # Adjustable time step
-    data_points_seconds = []  # Data points with time in seconds
-    data_points_hours   = []  # Data points with time in hours
-    max_iterations      = 24 * 60 // TIME_STEP_MINUTES  # Maximum number of iterations (1 day)
-    iterations          = 0  # Counter for iterations
-    earliest_power_on   = calculate_modulated_earliest_power_on(current_date, earliest_power_on, power_on_time_modulation_hours)
-    latest_power_off    = calculate_modulated_latest_power_off(current_date, latest_power_off, power_off_time_modulation_hours)
-    modulated_max_intensity = calculate_modulated_max_intensity(current_date, amplitude_modulation)
-    while iterations < max_iterations:
-        intensity = calculate_intensity(current_datetime, earliest_power_on, latest_power_off, modulated_max_intensity)
-        intensity = max(0,intensity)
-        # Calculate time in seconds, starting from midnight of the current day
-        time_in_seconds = int((current_datetime - datetime.datetime(current_date.year, current_date.month, current_date.day)).total_seconds())
-        data_points_seconds.append((time_in_seconds, intensity))
-        # Calculate current hour for the hours version
-        current_hour = current_datetime.hour + current_datetime.minute / 60
-        data_points_hours.append((current_hour, intensity))  # Store data with time in hours
-        current_datetime += time_step
-        iterations += 1
-    overspill_proportion = 0.85
-    smoothing_iteration = 1
-    data_points_seconds = smooth_transition_intensity(data_points_seconds, earliest_power_on, latest_power_off, transition_duration_minutes, overspill_proportion, smoothing_iteration)
+    # returns scaled schedules for the voltage required and a few more infos for reporting
     return scale_data_points_seconds(data_points_seconds, maximum_voltage), scale_data_points_seconds(data_points_hours, maximum_voltage), earliest_power_on, latest_power_off, modulated_max_intensity
 
 
@@ -990,25 +950,17 @@ def create_yearly_schedule_3d_plot(maximum_voltage):
     plt.title('Intensity Over the Year')
     plt.show()
 
-def create_triple_plot(data_points_intensity1, data_points_intensity2, data_points_intensity3):
+def create_plot(schedule_dic, color_dic):
     """
-    Function to plot three data_points_intensities
+    Function to plot several schedules
     Demo of capability and debug/confirmation of schedules generated
     """
-    # You can define labels for each dataset
-    label1 = "3500K"
-    label2 = "5000K"
-    label3 = "385nm"
-    # Unpack the time and intensity values for each dataset
-    #print(data_points_intensity1)
-    times1, intensities1 = zip(*data_points_intensity1)
-    times2, intensities2 = zip(*data_points_intensity2)
-    times3, intensities3 = zip(*data_points_intensity3)
-    # Create a plot and add lines for each dataset
     plt.figure(figsize=(10, 6))
-    plt.plot(times1, intensities1, label=label1, marker='o', linestyle='-', color='LightSalmon')
-    plt.plot(times2, intensities2, label=label2, marker='o', linestyle='-', color='SkyBlue')
-    plt.plot(times3, intensities3, label=label3, marker='o', linestyle='-', color='DarkSlateBlue')
+    for (label, schedule) in schedule_dic.items():
+        # Unpack the time and intensity values
+        times, intensities = zip(*schedule[0])
+        # Create a plot and add lines
+        plt.plot(times, intensities, label=label, marker='o', linestyle='-', color=color_dic[label])
     # Set the x-axis and y-axis limits
     plt.xlim(0, 86400)  # Replace xmin and xmax with your desired minimum and maximum for the x-axis
     plt.ylim(0.0, 10)  # Replace ymin and ymax with your desired minimum and maximum for the y-axis

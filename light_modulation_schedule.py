@@ -238,11 +238,14 @@ def generate_schedules(debug=False):
         "schedule_5000" : (schedule_5000, "out-b"),
         "schedule_385"  : (schedule_385,  "out-c")
     }
+    color_dic = {
+        "schedule_3500" : 'LightSalmon',
+        "schedule_5000" : 'SkyBlue',
+        "schedule_385"  : 'DarkSlateBlue'
+    }
 
     if debug is True:
-        lml.create_triple_plot(schedule_dic["schedule_3500"][0],
-                               schedule_dic["schedule_5000"][0],
-                               schedule_dic["schedule_385"][0])
+        lml.create_plot(schedule_dic, color_dic)
 
     # Shedules need to be passed as string to the Crescontrol.
     schedule_dic = lml.stringify_schedules_in_dic(schedule_dic)

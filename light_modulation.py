@@ -20,9 +20,10 @@ LOGFILE     = os.path.basename(__file__).replace('py','log')
 # ------------------------------------------------------------------------------
 local_ip = lml.get_local_ip()
 
-# ------------------------------------------------------------------------------
-# -- Main use of code ----------------------------------------------------------
-if __name__ == "__main__":
+def get_args():
+    """
+    Analyse arguments passed to the script
+    """
     parser = argparse.ArgumentParser(description="""
     Python script to generate schedules modulated according to the current day.
     This script can be run manually, or called regularly with cron for example.""",
@@ -45,6 +46,12 @@ if __name__ == "__main__":
                         help="Plot mode: show several plots for schedules in debug mode")
 
     args = parser.parse_args()
+    return args
+
+# ------------------------------------------------------------------------------
+# -- Main use of code ----------------------------------------------------------
+if __name__ == "__main__":
+    args = get_args()
 
     if args.plot:
         args.debug = True
@@ -85,19 +92,6 @@ if __name__ == "__main__":
                     lml.printAndLog(f'Problem sending schedules :-(.\n', logFile)
                 result_for_mail += result
                 result_for_mail += "\n"
-
-                """
-                # Currently, something somehow enables wrongly the switch-12v...
-                # Let's disable it for now if enabled at this time:
-                response, time_taken = lml.execute_command('switch-12v:enabled')
-                if response != "0":
-                    message = "Switch-12v enabled. Disabling it:\n"
-                    lml.printAndLog(message, logFile)
-                    result_for_mail += message
-                    response, time_taken = lml.execute_command_and_report('switch-12v:enabled=0')
-                    result_for_mail += response
-                    result_for_mail += '\n'
-                """
 
                 # Saving system configuration
                 response, time_taken = lml.execute_command_and_report('system:save()')
