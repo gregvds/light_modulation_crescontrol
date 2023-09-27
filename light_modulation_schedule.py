@@ -146,7 +146,7 @@ def generate_385_schedule(schedule_name, driver_maximum_intensity, maximum_inten
     }
     return schedule_385_dic
 
-def generate_result_for_email(schedule_dic_list):
+def generate_result_for_email(schedule_dic_list, complementary_text=""):
     result_for_mail = '\
 Daily report of led lights schedules modulation\n\
 --------------------------------------------------------------------------------\n\
@@ -168,8 +168,8 @@ Schedule for %s\n\
      "%05.2f" % (schedule_dic['maximum_voltage']*schedule_dic['daily_maximum_intensity']),
      "%02.2f" % ((schedule_dic['daily_maximum_intensity'])*100.0))
     result_for_mail += '\
---------------------------------------------------------------------------------\n\n'
-
+--------------------------------------------------------------------------------\n'
+    result_for_mail += complementary_text
     return result_for_mail
 
 def generate_schedules(debug=False):
@@ -188,9 +188,9 @@ def generate_schedules(debug=False):
 
     # --------------------------------------------------------------------------
     # Generation of schedule for FLUXengines 3500K
-    driver_maximum_intensity_3500K   = 1050                                      # This is the maximum Amper your led driver can produce
+    driver_maximum_intensity_3500K   = 610                                     # This is the maximum Amper your led driver can produce
     driver_minimal_voltage_for_light_3500K = 0.79                               # This is the minimal voltage dim signal the driver reacts to
-    maximum_intensity_required_3500K = driver_maximum_intensity_3500K*(5.0/10.5) # This is the maximum Amper you want the driver to deliver during the schedule
+    maximum_intensity_required_3500K = driver_maximum_intensity_3500K*(500/610) # This is the maximum Amper you want the driver to deliver during the schedule
     schedule_3500_dic = generate_3500K_schedule("schedule_3500", driver_maximum_intensity_3500K, maximum_intensity_required_3500K)
     # Gating the data so the lowest values produce already light.
     # Depending on your led array and driver, you should adjust this
@@ -248,23 +248,31 @@ def generate_schedules(debug=False):
     schedule_dic = lml.stringify_schedules_in_dic(schedule_dic)
 
     # --------------------------------------------------------------------------
-    # generate a report of schedules generated to be sent by email (or simply printed)
-    schedules_dic_list = [schedule_3500_dic, schedule_5000_dic, schedule_385_dic]
-    result_for_mail = generate_result_for_email(schedules_dic_list)
-
-    # --------------------------------------------------------------------------
     # get the json files for the modules
     json_3500 = lml.get_module_json("fluxengine_3500k")
     json_5000 = lml.get_module_json("fluxengine_5000k")
     json_385  = lml.get_module_json("apexengine_385")
+    lit_area = 0.4 #m²
+    loss_factor = 0.8 #%
 
-    dli_3500 = 6*lml.get_dli_by_m2(schedule_3500, driver_maximum_intensity_3500K, json_3500)/1000000
-    dli_5000 = 6*lml.get_dli_by_m2(schedule_5000, driver_maximum_intensity_5000K, json_5000)/1000000
-    dli_385  = 5*lml.get_dli_by_m2(schedule_385,  driver_maximum_intensity_385,   json_385) /1000000
+    dli_3500 = loss_factor*6*lml.get_dli_by_m2(schedule_3500, driver_maximum_intensity_3500K, json_3500, lit_area)/1000000
+    dli_5000 = loss_factor*6*lml.get_dli_by_m2(schedule_5000, driver_maximum_intensity_5000K, json_5000, lit_area)/1000000
+    dli_385  = loss_factor*5*lml.get_dli_by_m2(schedule_385,  driver_maximum_intensity_385,   json_385, lit_area) /1000000
 
-    print(f'{dli_3500:6.3f} mol/m²/day of photon delivered by 6 FLUXengines 3500K')
-    print(f'{dli_5000:6.3f} mol/m²/day of photon delivered by 6 FLUXengines 5000K')
-    print(f'{dli_385:6.3f} mol/m²/day of photon delivered by 5 APEXengines 385')
+    dli_details = f'\
+DLI for the schedules calculated based on modules numbers, \n\
+characteristics and driver settings for a lit area of {lit_area}m² \n\
+and a loss factor of {((1.0-loss_factor)*100):2.0f}% \n\
+--------------------------------------------------------------------------------\n\
+    {dli_3500:6.3f} mol/m²/day of photon delivered by 6 FLUXengines 3500K on a driver set at {driver_maximum_intensity_3500K:4.0f}mA. \n\
+    {dli_5000:6.3f} mol/m²/day of photon delivered by 6 FLUXengines 5000K on a driver set at {driver_maximum_intensity_5000K:4.0f}mA. \n\
+    {dli_385:6.3f} mol/m²/day of photon delivered by 5 APEXengines 385nm on a driver set at {driver_maximum_intensity_385:4.0f}mA. \n\
+--------------------------------------------------------------------------------\n'
+
+    # --------------------------------------------------------------------------
+    # generate a report of schedules generated to be sent by email (or simply printed)
+    schedules_dic_list = [schedule_3500_dic, schedule_5000_dic, schedule_385_dic]
+    result_for_mail = generate_result_for_email(schedules_dic_list, complementary_text=dli_details)
 
     return schedule_dic, result_for_mail
 

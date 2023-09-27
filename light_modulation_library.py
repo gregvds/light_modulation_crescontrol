@@ -631,10 +631,10 @@ def execute_command_and_report(query, output="", total_time=0):
     """
     Wrapping function of above function and add reporting/time to given args
     """
-    output += f"Query: {query}\n"
+    output += f"-> Query:                     {query}\n"
     response, time_taken = execute_command(query)
     total_time += time_taken
-    output += f'Response (in {round_thousands_second_time_delta(time_taken)} secs.): {response}\n'
+    output += f'<- Response (in {round_thousands_second_time_delta(time_taken)} secs.): {response}\n'
     return output, total_time
 
 def test_crescontrol_online():
@@ -802,7 +802,7 @@ def get_ppe_for_i(module_json_dic, i_value):
     """
     return interpolate_value_for_i(module_json_dic, "I_photon_efficiency", i_value)
 
-def get_dli_by_m2(data_points_seconds, driver_maximum_intensity, module_json_dic):
+def get_dli_by_m2(data_points_seconds, driver_maximum_intensity, module_json_dic, lit_area):
     """
     This function calculates DLI (µmol/m²/day) as = PPE(I)*U(I)*I, integrated
     Throughout the scheduled intensities I.
@@ -822,7 +822,7 @@ def get_dli_by_m2(data_points_seconds, driver_maximum_intensity, module_json_dic
                     if i == j]
 
     # Calculates DLI by integrating PPF according to schedule using the Simpson's rule.
-    dli_by_m2 = simps(ppf_values, t_values)
+    dli_by_m2 = simps(ppf_values, t_values)/lit_area
     return dli_by_m2
 
 

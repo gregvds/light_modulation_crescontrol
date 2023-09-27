@@ -109,6 +109,6 @@ if __name__ == "__main__":
                 # no CresControl found!
                 result_for_mail += f"Crescontrol on {lms.CRESCONTROL_IP} was not found, nothing done!\n"
             # Send of mail
-            printAndLog(result_for_mail, logFile)
             lml.send_mail(result_for_mail)
+        lml.printAndLog(result_for_mail, logFile)
         lml.printAndLog("Finished.", logFile)
