@@ -50,7 +50,8 @@ def generate_3500K_schedule(schedule_name, driver_maximum_intensity, maximum_int
     daily_maximum_intensity) = lml.create_intensity_data_suntime(maximum_voltage,
                                                                  mode="dawn",
                                                                  length_proportion=0.25,
-                                                                 transition_duration_minutes=transition_duration_minutes)
+                                                                 transition_duration_minutes=transition_duration_minutes,
+                                                                 plot=PLOT)
 
     # We save back the schedule name and the modulated begin and max intensity
     schedule_3500_dic = {
@@ -68,7 +69,8 @@ def generate_3500K_schedule(schedule_name, driver_maximum_intensity, maximum_int
     junk) = lml.create_intensity_data_suntime(maximum_voltage,
                                               mode='dusk',
                                               length_proportion=0.25,
-                                              transition_duration_minutes=transition_duration_minutes)
+                                              transition_duration_minutes=transition_duration_minutes,
+                                              plot=PLOT)
 
     # the two curves for dawn and dusk schedules are added
     data_points_seconds = lml.sum_data_points_seconds(data_points_seconds_first,
@@ -98,7 +100,8 @@ def generate_5000K_schedule(schedule_name, driver_maximum_intensity, maximum_int
     daily_maximum_intensity) = lml.create_intensity_data_suntime(maximum_voltage,
                                                                  curve_mode="cos2",
                                                                  length_proportion=0.90,
-                                                                 transition_duration_minutes=transition_duration_minutes)
+                                                                 transition_duration_minutes=transition_duration_minutes,
+                                                                 plot=PLOT)
 
     # We save back the data and the modulated begin, end and max intensity
     schedule_5000_dic = {
@@ -130,7 +133,8 @@ def generate_385_schedule(schedule_name, driver_maximum_intensity, maximum_inten
     daily_maximum_intensity) = lml.create_intensity_data_suntime(maximum_voltage,
                                                                  curve_mode="cos3",
                                                                  length_proportion=0.7,
-                                                                 transition_duration_minutes=transition_duration_minutes)
+                                                                 transition_duration_minutes=transition_duration_minutes,
+                                                                 plot=PLOT)
 
     # We save back the data and the modulated begin, end and max intensity
     schedule_385_dic = {

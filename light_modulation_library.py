@@ -7,6 +7,7 @@
 # ------------------------------------------------------------------------------
 
 # -- Imports for the generation of data_points
+import os
 import math
 import itertools
 import operator
@@ -228,27 +229,32 @@ def get_winter_solstice_sunset(time_zone=2):
     #print(equinox_sunset_time)
     return convert_datetime_to_decimal_hour(equinox_sunset_time)
 
-def mod_on_off_times(earliest_power_on, latest_power_off, mode='centered', length_proportion=1.0):
+def mod_on_off_times(earliest_power_on, latest_power_off, mode='centered', length_proportion=1.0, shift_proportion=0.0):
     """
     Moves the times of power_on and power_off according to mode.
     The attribute length_proportion is use to shrink or expand a centered curve
     or is used to define the relative length of a dawn/dusk curve relative to
-    length of the current day.
+    current day length.
+    shift_propotion is used to advance (negative values) or delay (positive values)
+    The times of power ON/OFF by a proportion of current day length.
     """
     day_length = latest_power_off - earliest_power_on
     noon = (earliest_power_on + latest_power_off)/2.0
+    shift = day_length * shift_proportion
     # Modifications of begin and end of curve according to the choosen mode
     if mode == 'centered':
         # begins late and finishes early in proportion with the day duration
         # Default length_proportion=1.0 generate a normal complete curve.
-        earliest_power_on    = noon - day_length * length_proportion/2.0
-        latest_power_off     = noon + day_length * length_proportion/2.0
+        earliest_power_on    = (noon - day_length * length_proportion/2.0) + shift
+        latest_power_off     = (noon + day_length * length_proportion/2.0) + shift
     elif mode == 'dawn':
         # finishes early in proportion with the day duration
-        latest_power_off     = earliest_power_on + day_length * length_proportion
+        earliest_power_on    += shift
+        latest_power_off     = (earliest_power_on + day_length * length_proportion) + shift
     elif mode == 'dusk':
         # begins late in proportion with the day duration
-        earliest_power_on    = latest_power_off - day_length * length_proportion
+        earliest_power_on    = (latest_power_off - day_length * length_proportion) + shift
+        latest_power_off     += shift
     return earliest_power_on, latest_power_off
 
 def get_modulated_max_intensity(current_date, earliest_power_on, latest_power_off, amplitude_modulation=None):
@@ -290,7 +296,7 @@ def calculate_Schedule(current_date, earliest_power_on, latest_power_off, modula
         iterations += 1
     return data_points_seconds, data_points_hours
 
-def create_intensity_data_suntime(maximum_voltage, amplitude_modulation=None, mode="centered", curve_mode="cos", length_proportion=1.0, date=None, smoothing=True, transition_duration_minutes=60):
+def create_intensity_data_suntime(maximum_voltage, amplitude_modulation=None, mode="centered", curve_mode="cos", length_proportion=1.0, shift_proportion=0.0, date=None, smoothing=True, transition_duration_minutes=60, plot=False):
     """
     Create a list of times and intensities throughout the day (packed in tuples).
     This function uses latitude and longitude to generate earliest_power_on and
@@ -318,7 +324,7 @@ def create_intensity_data_suntime(maximum_voltage, amplitude_modulation=None, mo
     modulated_max_intensity = get_modulated_max_intensity(current_date, earliest_power_on, latest_power_off, amplitude_modulation=amplitude_modulation)
 
     # moves power ON and OFF times according to the mode and the length proportion
-    (earliest_power_on, latest_power_off) = mod_on_off_times(earliest_power_on, latest_power_off, mode=mode, length_proportion=length_proportion)
+    (earliest_power_on, latest_power_off) = mod_on_off_times(earliest_power_on, latest_power_off, mode=mode, length_proportion=length_proportion, shift_proportion=shift_proportion)
 
     # generates schedule for the current day with its power ON/OFF times, max intensity and curve_mode
     (data_points_seconds, data_points_hours) = calculate_Schedule(current_date, earliest_power_on, latest_power_off, modulated_max_intensity, curve_mode=curve_mode)
@@ -330,17 +336,25 @@ def create_intensity_data_suntime(maximum_voltage, amplitude_modulation=None, mo
         data_points_seconds = smooth_transition_intensity(data_points_seconds, earliest_power_on, latest_power_off, transition_duration_minutes, overspill_proportion, smoothing_iteration)
 
     # returns scaled schedules for the voltage required and a few more infos for reporting
-    return scale_data_points_seconds(data_points_seconds, maximum_voltage), scale_data_points_seconds(data_points_hours, maximum_voltage), earliest_power_on, latest_power_off, modulated_max_intensity
+    return scale_data_points_seconds(data_points_seconds, maximum_voltage, plot=plot), scale_data_points_seconds(data_points_hours, maximum_voltage), earliest_power_on, latest_power_off, modulated_max_intensity
 
 
 # -- Functions more directly linked to produce data_points for crescontrol -----
 
-def scale_data_points_seconds(data_points_seconds, scale_factor):
+def scale_data_points_seconds(data_points_seconds, scale_factor, plot=False):
     """
     This function multiply all the intensity of the data_points_seconds by the scale factor
     """
-    data_points_seconds = [(time, intensity*scale_factor) for time, intensity in data_points_seconds]
-    return data_points_seconds
+    if plot:
+        fig, ax = plt.subplots()  # Create the initial plot
+        plot_data_on_ax(data_points_seconds, ax, title="Data points before scaling", timing=2)
+    else:
+        ax = None
+    scaled_data_points_seconds = [(time, intensity*scale_factor) for time, intensity in data_points_seconds]
+    if ax:
+        plot_data_on_ax(scaled_data_points_seconds, ax, title="Data points after scaling", timing=2)
+        plt.close(fig)
+    return scaled_data_points_seconds
 
 def parallelize_data_points_seconds(data_points_seconds_1, data_points_seconds_2):
     """
@@ -399,7 +413,10 @@ def gate_data_points_seconds(data_points_seconds, treshold=0.01, lower_gate=1, u
     """
     # We first retrieve the maximum intensity of the schedule
     if plot:
-        plot_data(data_points_seconds, title="Data points before gated")
+        fig, ax = plt.subplots()  # Create the initial plot
+        plot_data_on_ax(data_points_seconds, ax, title="Data points before gated", timing=2)
+    else:
+        ax = None
     max_intensity = 0
     for (time, intensity) in data_points_seconds:
         max_intensity = max(max_intensity, intensity)
@@ -416,8 +433,9 @@ def gate_data_points_seconds(data_points_seconds, treshold=0.01, lower_gate=1, u
         else:
             gated_intensity = lower_gate + ((intensity-treshold)*gating_factor)
             gated_data_points_seconds.append((time, gated_intensity))
-    if plot:
-        plot_data(gated_data_points_seconds, title="Data points after gated")
+    if ax is not None:
+        plot_data_on_ax(gated_data_points_seconds, ax, title="Data points after gated", timing=2)
+        plt.close(fig=fig)
     return gated_data_points_seconds
 
 def simplify_data_points_seconds(data_points_seconds, desired_num_points=32, ax=None):
@@ -435,21 +453,13 @@ def simplify_data_points_seconds(data_points_seconds, desired_num_points=32, ax=
     spline = UnivariateSpline(times, intensities, k=5, s=0)
     fit_times = np.linspace(times.min(), times.max(), desired_num_points)
     fit_intensities = spline(fit_times)
-    if ax:
-        ax.clear()  # Clear the previous plot
-        ax.plot(times, intensities, marker='o', linestyle='-', color='b', label='Original Data')
-        ax.plot(fit_times, fit_intensities, marker='x', linestyle='-', color='r', label='Fitted Curve')
-        ax.set_xlabel('Time (seconds since midnight)')
-        ax.set_ylabel('Intensity')
-        ax.set_title('Fitted Intensity Curve')
-        ax.legend()
-        ax.grid(True)
-        plt.pause(0.01)  # Pause briefly to update the plot
     # The fit_times and fit_intensities arrays now contain the desired number of
     # points that best fit the curve.
     data_points_intensities = list(zip(fit_times, fit_intensities))
     # ensures that no negative values were introduced by the spline computation
     data_points_intensities = gate_data_points_seconds(data_points_intensities, lower_gate=0)
+    if ax:
+        plot_data_on_ax(data_points_intensities, ax)
     return data_points_intensities
 
 def clean_intermediate_zeros_from_data_points_seconds(data_points_seconds, treshold=0.01, ax=None):
@@ -479,15 +489,7 @@ def clean_intermediate_zeros_from_data_points_seconds(data_points_seconds, tresh
         position +=1
         right_intensity = data_points_seconds[min(position+1,max_position)][1]
     if ax:
-        (times, intensities) = zip(*filtered_result)
-        ax.clear()  # Clear the previous plot
-        ax.plot(times, intensities, marker='o', linestyle='-', color='b', label='Original Data')
-        ax.set_xlabel('Time (seconds since midnight)')
-        ax.set_ylabel('Intensity')
-        ax.set_title('Fitted Intensity Curve')
-        ax.legend()
-        ax.grid(True)
-        plt.pause(0.01)  # Pause briefly to update the plot
+        plot_data_on_ax(filtered_result, ax)
     return filtered_result
 
 def clean_intermediate_flats_from_data_points_seconds(data_points_seconds, treshold=0.001, ax=None):
@@ -516,16 +518,8 @@ def clean_intermediate_flats_from_data_points_seconds(data_points_seconds, tresh
         position +=1
         right_intensity = data_points_seconds[min(position+1,max_position)][1]
     if ax:
+        plot_data_on_ax(filtered_result, ax, title="Reduction of number of data points")
         (times, intensities) = zip(*filtered_result)
-        ax.clear()  # Clear the previous plot
-        ax.plot(times, intensities, marker='o', linestyle='-', color='b', label='Original Data')
-        ax.set_xlabel('Time (seconds since midnight)')
-        ax.set_ylabel('Intensity')
-        ax.set_title('Fitted Intensity Curve')
-        ax.legend()
-        ax.grid(True)
-        plt.pause(0.01)  # Pause briefly to update the plot
-
     return filtered_result
 
 def clean_and_simplify_to_desired_points(data_points_seconds, desired_num_points=32, plot=False):
@@ -549,7 +543,8 @@ def clean_and_simplify_to_desired_points(data_points_seconds, desired_num_points
         potential_data_points_seconds = clean_intermediate_flats_from_data_points_seconds(
             simplify_data_points_seconds(data_points_seconds, desired_num_points=number_of_data_points), ax=ax)
     if plot:
-        plt.show()
+        time.sleep(2.0)
+        plt.close(fig=fig)
     return potential_data_points_seconds
 
 def convert_data_points_to_string(data_points_seconds, decimal_places=2, minimum_intensity=0.00, maximum_intensity=10.0):
@@ -744,20 +739,18 @@ def send_schedules_to_crescontrol(schedule_dic):
     return output, status
 
 
-
 # --- Other functions ----------------------------------------------------------
 
-def get_module_json(module_name):
+def get_module_json(module_name, refresh_json=False):
     """
-    This function download the json for the named module
+    This function download the json for the named module if needed.
     """
-    response = requests.get(f'https://raw.cre.science/products/modules/modules/{module_name}.json')
-    with open(f'./{module_name}.json', mode = 'wb') as file:
-        file.write(response.content)
-    #print(response.content)
+    if not os.path.isfile(f'./{module_name}.json') or refresh_json:
+        response = requests.get(f'https://raw.cre.science/products/modules/modules/{module_name}.json')
+        with open(f'./{module_name}.json', mode = 'wb') as file:
+            file.write(response.content)
     f = f'./{module_name}.json'
     records = json.loads(open(f).read())
-    #print(json.dumps(records, indent=4, separators=(", ",": ")))
     return records
 
 def interpolate_value_for_i(module_json_dic, spec, i_value):
@@ -1003,17 +996,38 @@ def plot_data(data_points_seconds, title=""):
     # Show the plot
     plt.show()
 
-def create_plot(schedule_dic, color_dic):
+def plot_data_on_ax(data_points_seconds, ax, title="", timing=0.01):
+    (times, intensities) = zip(*data_points_seconds)
+    ax.clear()  # Clear the previous plot
+    ax.plot(times, intensities, marker='+', linestyle='-', color='r', label='Original Data')
+    # Set the x-axis and y-axis limits
+    plt.xlim(0, 86400)  # Replace xmin and xmax with your desired minimum and maximum for the x-axis
+    plt.ylim(0.0, 10)  # Replace ymin and ymax with your desired minimum and maximum for the y-axis
+    x_ticks = np.arange(0, 86401, 3600)  # Define x-axis tick positions at intervals of one hour
+    y_ticks = np.arange(0.0, 10.1, 0.5)  # Define y-axis tick positions at intervals of 10V
+    plt.xticks(x_ticks)  # Set x-axis tick positions
+    plt.yticks(y_ticks)  # Set y-axis tick positions
+    plt.xticks(rotation=90)
+    ax.set_xlabel('Time (seconds since midnight)')
+    ax.set_ylabel('Intensity')
+    ax.set_title(title)
+    #ax.legend()
+    ax.grid(True)
+    plt.pause(timing)  # Pause briefly to update the plot
+
+def create_plot(schedule_dic, color_dic, timing=5.0):
     """
     Function to plot several schedules
     Demo of capability and debug/confirmation of schedules generated
     """
-    plt.figure(figsize=(10, 6))
+    #plt.ion()
+    fig, ax = plt.subplots(figsize=(10, 6))
+    #fig = plt.figure(figsize=(10, 6))
     for (label, schedule) in schedule_dic.items():
         # Unpack the time and intensity values
         times, intensities = zip(*schedule[0])
         # Create a plot and add lines
-        plt.plot(times, intensities, label=label, marker='o', linestyle='-', color=color_dic[label])
+        ax.plot(times, intensities, label=label, marker='o', linestyle='-', color=color_dic[label])
     # Set the x-axis and y-axis limits
     plt.xlim(0, 86400)  # Replace xmin and xmax with your desired minimum and maximum for the x-axis
     plt.ylim(0.0, 10)  # Replace ymin and ymax with your desired minimum and maximum for the y-axis
@@ -1024,14 +1038,14 @@ def create_plot(schedule_dic, color_dic):
     plt.yticks(y_ticks)  # Set y-axis tick positions
     plt.xticks(rotation=90)
     # Set labels and title
-    plt.xlabel('Time (seconds)')
-    plt.ylabel('Intensity (Volts)')
-    plt.title('Intensity Comparison')
-    plt.grid(True)
+    ax.set_xlabel('Time (seconds)')
+    ax.set_ylabel('Intensity (Volts)')
+    ax.set_title('Intensity Comparison')
+    ax.grid(True)
     # Add a legend
-    plt.legend()
-    # Show the plot
-    plt.show()
+    ax.legend()
+    plt.pause(timing)
+    plt.close(fig=fig)
 
 
 # ------------------------------------------------------------------------------
