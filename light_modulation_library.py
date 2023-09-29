@@ -57,6 +57,8 @@ def calculate_intensity(current_time, earliest_power_on, latest_power_off, ampli
     """
     Function to calculate intensity based on time of day - produce a simple cosine
     begining at earliest_power_on, ending at latest_power_off and reaching amplitude_modulation
+    mode offers the possibility to generate a cosine, then two more kind of cosine where
+    angles are themselves cosine functions, twice or thrice.
     """
     if mode not in ("cos", "cos2", "cos3"):
         print(f"Error: mode received {mode} not recognized.\nPlease set mode to 'cos, 'cos2 or 'cos3'.")
@@ -229,6 +231,9 @@ def get_winter_solstice_sunset(time_zone=2):
 def mod_on_off_times(earliest_power_on, latest_power_off, mode='centered', length_proportion=1.0):
     """
     Moves the times of power_on and power_off according to mode.
+    The attribute length_proportion is use to shrink or expand a centered curve
+    or is used to define the relative length of a dawn/dusk curve relative to
+    length of the current day.
     """
     day_length = latest_power_off - earliest_power_on
     noon = (earliest_power_on + latest_power_off)/2.0
@@ -248,21 +253,18 @@ def mod_on_off_times(earliest_power_on, latest_power_off, mode='centered', lengt
 
 def get_modulated_max_intensity(current_date, earliest_power_on, latest_power_off, amplitude_modulation=None):
     """
+    New methodology to calculate amplitude modulation based on current day length
+    compared to the longest day of the year (namely the Summer Solstice day)
+    The third root is here to pull back up a bit values (minimum = 0.73333 -> 0.90...)
     """
     day_length = latest_power_off - earliest_power_on
     summer_solstice_day_length = get_summer_solstice_sunset() - get_summer_solstice_sunrise()
-
-    # New methodology to calculate amplitude modulation based on current day length
-    # compared to the longest day of the year (namely the Summer Solstice day)
-    # The third root is here to pull back up a bit values (minimum = 0.73333 -> 0.90...)
-    modulated_max_intensity = 1.0
-    if amplitude_modulation is None: #Default case
-        modulated_max_intensity = min(1.0, math.pow((day_length/summer_solstice_day_length), (1.0/3.0)))
-    else:                            # Deprecated, needs the user to guess/give a amplitude of modulation...
-        print(f"An amplitude modulation of {amplitude_modulation} has been received.")
-        print(f"We are forced to use a less precise method to calculate the yearly modulated maximum intensity.")
-        print(f"Please do not define the argument 'amplitude_modulation' in order to use the more precise approach.")
-        modulated_max_intensity = calculate_modulated_max_intensity(current_date, amplitude_modulation)
+    winter_solstice_day_length = get_winter_solstice_sunset() - get_winter_solstice_sunrise()
+    # This goes from 0 at the winter solstice to 1 at the summer solstice
+    reduction_proportion = (day_length - winter_solstice_day_length) / (summer_solstice_day_length - winter_solstice_day_length)
+    if amplitude_modulation is None:
+        amplitude_modulation = 0.9
+    modulated_max_intensity = amplitude_modulation + (1.0 - amplitude_modulation) * reduction_proportion
     return modulated_max_intensity
 
 def calculate_Schedule(current_date, earliest_power_on, latest_power_off, modulated_max_intensity, curve_mode='cos'):
@@ -390,12 +392,14 @@ def substract_data_points_seconds(data_points_seconds_1, data_points_seconds_2, 
               if time == time2 and time in common_times]
     return result
 
-def gate_data_points_seconds(data_points_seconds, treshold=0.01, lower_gate=1, upper_gate=None):
+def gate_data_points_seconds(data_points_seconds, treshold=0.01, lower_gate=1, upper_gate=None, plot=False):
     """
     Gate the intensity values between lower_gate and upper_gate.
     Intensity values below treshold are zeroed.
     """
     # We first retrieve the maximum intensity of the schedule
+    if plot:
+        plot_data(data_points_seconds, title="Data points before gated")
     max_intensity = 0
     for (time, intensity) in data_points_seconds:
         max_intensity = max(max_intensity, intensity)
@@ -412,6 +416,8 @@ def gate_data_points_seconds(data_points_seconds, treshold=0.01, lower_gate=1, u
         else:
             gated_intensity = lower_gate + ((intensity-treshold)*gating_factor)
             gated_data_points_seconds.append((time, gated_intensity))
+    if plot:
+        plot_data(gated_data_points_seconds, title="Data points after gated")
     return gated_data_points_seconds
 
 def simplify_data_points_seconds(data_points_seconds, desired_num_points=32, ax=None):
@@ -443,9 +449,10 @@ def simplify_data_points_seconds(data_points_seconds, desired_num_points=32, ax=
     # points that best fit the curve.
     data_points_intensities = list(zip(fit_times, fit_intensities))
     # ensures that no negative values were introduced by the spline computation
+    data_points_intensities = gate_data_points_seconds(data_points_intensities, lower_gate=0)
     return data_points_intensities
 
-def clean_intermediate_zeros_from_data_points_seconds(data_points_seconds, treshold=0.01):
+def clean_intermediate_zeros_from_data_points_seconds(data_points_seconds, treshold=0.01, ax=None):
     """
     suppress all the data points 0.0 contiguous to two other 0.0 values to minimize
     useless points. This can trim down the length of the schedule to less than the
@@ -471,9 +478,19 @@ def clean_intermediate_zeros_from_data_points_seconds(data_points_seconds, tresh
         left_intensity = intensity
         position +=1
         right_intensity = data_points_seconds[min(position+1,max_position)][1]
+    if ax:
+        (times, intensities) = zip(*filtered_result)
+        ax.clear()  # Clear the previous plot
+        ax.plot(times, intensities, marker='o', linestyle='-', color='b', label='Original Data')
+        ax.set_xlabel('Time (seconds since midnight)')
+        ax.set_ylabel('Intensity')
+        ax.set_title('Fitted Intensity Curve')
+        ax.legend()
+        ax.grid(True)
+        plt.pause(0.01)  # Pause briefly to update the plot
     return filtered_result
 
-def clean_intermediate_flats_from_data_points_seconds(data_points_seconds, treshold=0.01):
+def clean_intermediate_flats_from_data_points_seconds(data_points_seconds, treshold=0.001, ax=None):
     """
     suppress all the intermediate data values defining flats periods to minimize
     useless points. This can trim down the length of the schedule to less than the
@@ -488,7 +505,7 @@ def clean_intermediate_flats_from_data_points_seconds(data_points_seconds, tresh
     # Iterate through the result, skipping central zero intensities
     for time, intensity in data_points_seconds[1:-1]:
         if (abs(left_intensity-intensity) < treshold) and (abs(intensity-right_intensity) < treshold)\
-           or (time < 10800 or time > 75600):
+           or (time < 10800 or time > 79200):
             left_intensity = intensity
             position +=1
             right_intensity = data_points_seconds[min(position+1,max_position)][1]
@@ -498,6 +515,17 @@ def clean_intermediate_flats_from_data_points_seconds(data_points_seconds, tresh
         left_intensity = intensity
         position +=1
         right_intensity = data_points_seconds[min(position+1,max_position)][1]
+    if ax:
+        (times, intensities) = zip(*filtered_result)
+        ax.clear()  # Clear the previous plot
+        ax.plot(times, intensities, marker='o', linestyle='-', color='b', label='Original Data')
+        ax.set_xlabel('Time (seconds since midnight)')
+        ax.set_ylabel('Intensity')
+        ax.set_title('Fitted Intensity Curve')
+        ax.legend()
+        ax.grid(True)
+        plt.pause(0.01)  # Pause briefly to update the plot
+
     return filtered_result
 
 def clean_and_simplify_to_desired_points(data_points_seconds, desired_num_points=32, plot=False):
@@ -519,7 +547,7 @@ def clean_and_simplify_to_desired_points(data_points_seconds, desired_num_points
     while len(potential_data_points_seconds) > desired_num_points:
         number_of_data_points -=1
         potential_data_points_seconds = clean_intermediate_flats_from_data_points_seconds(
-            simplify_data_points_seconds(data_points_seconds, desired_num_points=number_of_data_points, ax=ax))
+            simplify_data_points_seconds(data_points_seconds, desired_num_points=number_of_data_points), ax=ax)
     if plot:
         plt.show()
     return potential_data_points_seconds
@@ -817,7 +845,7 @@ def send_mail(email_message):
 
 # --- Supplementary functions, for debug, plotting and so on -------------------
 
-def create_monthly_plots(day = 21):
+def create_monthly_plots(day=21):
     """
     Function to create subplots for each Xth day of the month.
     Demo of capability.
@@ -924,12 +952,12 @@ def create_yearly_schedule_3d_plot(maximum_voltage):
     ax.plot_surface(X, Y, Z, cmap='viridis', alpha=0.8)
 
     # Add iso-intensity contours at specific levels (0, 2, 4, 6, 8, and 10)
-    contour_levels = [0, 2, 4, 6, 8, 10]
+    contour_levels = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     for level in contour_levels:
         contour = ax.contour(X, Y, Z, levels=[level], colors='red', linewidths=1)
         ax.clabel(contour, [level], fmt=f'Intensity {level}', inline=True, fontsize=10, colors='red')
 
-    ax.set_xlabel('Seconds in a Day')
+    ax.set_xlabel('Hours in a Day')
     ax.set_ylabel('Days of the Year')
     ax.set_zlabel('Intensity (Volt)')
 
@@ -948,6 +976,31 @@ def create_yearly_schedule_3d_plot(maximum_voltage):
 
    # Set the title and show the plot
     plt.title('Intensity Over the Year')
+    plt.show()
+
+def plot_data(data_points_seconds, title=""):
+    """
+    """
+    plt.figure(figsize=(10, 6))
+    times, intensities = zip(*data_points_seconds)
+    plt.plot(times, intensities, label="", marker='o', linestyle='-', color='LightSkyBlue')
+    # Set the x-axis and y-axis limits
+    plt.xlim(0, 86400)  # Replace xmin and xmax with your desired minimum and maximum for the x-axis
+    plt.ylim(0.0, 10)  # Replace ymin and ymax with your desired minimum and maximum for the y-axis
+    # Customize grid steps (tick intervals) for x and y axes
+    x_ticks = np.arange(0, 86401, 3600)  # Define x-axis tick positions at intervals of one hour
+    y_ticks = np.arange(0.0, 10.1, 0.5)  # Define y-axis tick positions at intervals of 10V
+    plt.xticks(x_ticks)  # Set x-axis tick positions
+    plt.yticks(y_ticks)  # Set y-axis tick positions
+    plt.xticks(rotation=90)
+    # Set labels and title
+    plt.xlabel('Time (seconds)')
+    plt.ylabel('Intensity (Volts)')
+    plt.title(title)
+    plt.grid(True)
+    # Add a legend
+    #plt.legend()
+    # Show the plot
     plt.show()
 
 def create_plot(schedule_dic, color_dic):

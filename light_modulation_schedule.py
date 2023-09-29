@@ -40,7 +40,7 @@ def generate_3500K_schedule(schedule_name, driver_maximum_intensity, maximum_int
     """
     # Parameters (you can adjust these)
     maximum_voltage = 10 * (maximum_intensity_required/driver_maximum_intensity)  # Maximum voltage (adjustable, 0-10V)
-    transition_duration_minutes = 90  # Duration of smooth transitions at the begin and end (x minutes)
+    transition_duration_minutes = 60  # Duration of smooth transitions at the begin and end (x minutes)
 
     # A first curve is generated for dawn, of a duration of 25% of the current day duration
     (data_points_seconds_first,
@@ -67,7 +67,7 @@ def generate_3500K_schedule(schedule_name, driver_maximum_intensity, maximum_int
     daily_latest_power_off,
     junk) = lml.create_intensity_data_suntime(maximum_voltage,
                                               mode='dusk',
-                                              length_proportion=0.3,
+                                              length_proportion=0.25,
                                               transition_duration_minutes=transition_duration_minutes)
 
     # the two curves for dawn and dusk schedules are added
@@ -194,9 +194,9 @@ def generate_schedules(debug=False):
     schedule_3500_dic = generate_3500K_schedule("schedule_3500", driver_maximum_intensity_3500K, maximum_intensity_required_3500K)
     # Gating the data so the lowest values produce already light.
     # Depending on your led array and driver, you should adjust this
-    data_points_seconds_3500 = lml.gate_data_points_seconds(schedule_3500_dic['full_schedule'], lower_gate=driver_minimal_voltage_for_light_3500K)
+    data_points_seconds_3500 = lml.gate_data_points_seconds(schedule_3500_dic['full_schedule'], lower_gate=driver_minimal_voltage_for_light_3500K, plot=PLOT)
     # The result is cleaned from redundant values and trimmed down to 32 values
-    schedule_3500 = lml.clean_and_simplify_to_desired_points(data_points_seconds_3500, plot = PLOT)
+    schedule_3500 = lml.clean_and_simplify_to_desired_points(data_points_seconds_3500, plot=PLOT)
 
 
     # --------------------------------------------------------------------------
@@ -212,9 +212,9 @@ def generate_schedules(debug=False):
                                                                                                (maximum_intensity_required_3500K/maximum_intensity_required_5000K)))
     # Gating the data so the lowest values produce already light.
     # Depending on your led array and driver, you should adjust this
-    data_points_seconds_5000 = lml.gate_data_points_seconds(data_points_seconds_5000, lower_gate=driver_minimal_voltage_for_light_5000K)
+    data_points_seconds_5000 = lml.gate_data_points_seconds(data_points_seconds_5000, lower_gate=driver_minimal_voltage_for_light_5000K, plot=PLOT)
     # The result is cleaned from redundant values and trimmed down to 32 values
-    schedule_5000 = lml.clean_and_simplify_to_desired_points(data_points_seconds_5000, plot = PLOT)
+    schedule_5000 = lml.clean_and_simplify_to_desired_points(data_points_seconds_5000, plot=PLOT)
 
 
     # --------------------------------------------------------------------------
@@ -225,9 +225,9 @@ def generate_schedules(debug=False):
     schedule_385_dic = generate_385_schedule("schedule_385", driver_maximum_intensity_385, maximum_intensity_required_385)
     # Gating the data so the lowest values produce already light.
     # Depending on your led array and driver, you should adjust this
-    data_points_seconds_385 = lml.gate_data_points_seconds(schedule_385_dic['full_schedule'], lower_gate=driver_minimal_voltage_for_light_385)
+    data_points_seconds_385 = lml.gate_data_points_seconds(schedule_385_dic['full_schedule'], lower_gate=driver_minimal_voltage_for_light_385, plot=PLOT)
     # The result is cleaned from redundant values and trimmed down to 32 values
-    schedule_385 = lml.clean_and_simplify_to_desired_points(data_points_seconds_385, plot = PLOT)
+    schedule_385 = lml.clean_and_simplify_to_desired_points(data_points_seconds_385, plot=PLOT)
 
     # --------------------------------------------------------------------------
     # packing of all the schedules generated in a dictionary.
