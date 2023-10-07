@@ -579,7 +579,7 @@ def convert_data_points_to_string(data_points_seconds, decimal_places=2, minimum
     Function to output proper string from data_points_seconds
     """
     # Create a string representation with brackets
-    data_string = "[" + ",".join([f"[{int(time)},{min(max(minimum_intensity,intensity),maximum_intensity):.{decimal_places}f}]" for time, intensity in data_points_seconds]) + "]"
+    data_string = "[" + ",".join([f"[{(time):.{decimal_places}f},{min(max(minimum_intensity,intensity),maximum_intensity):.{decimal_places}f}]" for time, intensity in data_points_seconds]) + "]"
     return data_string
 
 def stringify_schedules_in_dic(schedule_dic):
@@ -637,27 +637,24 @@ def execute_command(query, clean_answer=True):
         response = clean_up_crescontrol_response(response)
     return response, time_taken
 
-def execute_command_and_report(query, output="", total_time=0):
+def execute_command_and_report(query):
     """
     Wrapping function of above function and add reporting/time to given args
     """
-    output += f"-> Query:                     {query}\n"
+    logging.debug(f"-> Query:                     {query}")
     response, time_taken = execute_command(query)
-    total_time += time_taken
-    output += f'<- Response (in {round_thousands_second_time_delta(time_taken)} secs.): {response}\n'
-    return output, total_time
+    logging.debug(f'<- Response (in {round_thousands_second_time_delta(time_taken)} secs.): {response}')
+    return response
 
 def test_crescontrol_online():
-    status = False
-    output = f'Testing if CresControl on ws://{CRESCONTROL_IP}:81 is accessible:\n'
-    output, time_taken = execute_command_and_report('system:cpu-id', output)
-    if CRESCONTROL_CPU_ID in output and time_taken < 1000:
-        output += f'Crescontrol online :-)\n\n'
-        status =  True
+    logging.info(f'Testing if CresControl on ws://{CRESCONTROL_IP}:81 is accessible:')
+    output = execute_command_and_report('system:cpu-id')
+    status = CRESCONTROL_CPU_ID in output
+    if status:
+        logging.info(f'Crescontrol online :-)\n')
     else:
-        output += f'Unable to reach {CRESCONTROL_URL} with CPU ID {CRESCONTROL_CPU_ID} :-(: {response}\n\n'
-        status =  False
-    return output, status
+        logging.warning(f'Unable to reach {CRESCONTROL_URL} with CPU ID {CRESCONTROL_CPU_ID} :-(: {response}\n')
+    return status
 
 def set_crescontrol_timezone(timezone):
     """
@@ -665,14 +662,14 @@ def set_crescontrol_timezone(timezone):
     the suntime of your place and does not changes according to summer daylight
     saving time, which the sun does not follow :-).
     """
-    output = f'Set CresControl set timezone = {timezone}:\n'
-    (response, time_taken) = execute_command_and_report(f'time:timezone={timezone}', output)
-    return response, time_taken
+    logging.info(f'Set CresControl set timezone = {timezone}:')
+    response = execute_command_and_report(f'time:timezone={timezone}')
+    return response
 
 def get_crescontrol_led_verbosity():
-    output = f'Get CresControl led verbosity:\n'
-    (output, time_taken) = execute_command_and_report(f'led:verbosity', output=output)
-    return output, time_taken
+    logging.info(f'Get CresControl led verbosity:')
+    output = execute_command_and_report(f'led:verbosity')
+    return output
 
 def set_crescontrol_led_verbosity(level):
     """
@@ -682,17 +679,17 @@ def set_crescontrol_led_verbosity(level):
     0 : Off
     """
     if value in (0,1,2,3):
-        output = f'Set CresControl led verbosity:\n'
-        (output, time_taken) = execute_command_and_report(f'led:verbosity={level}', output=output)
-        return output, time_taken
+        logging.info(f'Set CresControl led verbosity:')
+        output = execute_command_and_report(f'led:verbosity={level}')
+        return output
     else:
         logging.error(f'Faulty value. Must be between 0 and 3 included')
         return f'Faulty value. Must be between 0 and 3 included', 0,0
 
 def get_crescontrol_websocket_remote_allow_connection():
-    output = f'Get CresControl websocket remote allow connection:\n'
-    (output, time_taken) = execute_command_and_report(f'websocket:remote:allow-connection', output=output)
-    return output, time_taken
+    logging.info(f'Get CresControl websocket remote allow connection:')
+    output = execute_command_and_report(f'websocket:remote:allow-connection')
+    return output
 
 def set_crescontrol_websocket_remote_allow_connection(value):
     """
@@ -700,42 +697,39 @@ def set_crescontrol_websocket_remote_allow_connection(value):
     1 : True
     """
     if value in (0,1):
-        output = f'Set CresControl websocket remote allow connection to {value}:\n'
-        (output, time_taken) = execute_command_and_report(f'websocket:remote:allow-connection={value}', output=output)
-        return output, time_taken
+        logging.info(f'Set CresControl websocket remote allow connection to {value}:')
+        output = execute_command_and_report(f'websocket:remote:allow-connection={value}')
+        return output
     else:
         logging.error(f'Faulty value. Must be 0 or 1')
-        return f'Faulty value. Must be 0 or 1', 0.0
+        return f'Faulty value. Must be 0 or 1'
 
 def get_crescontrol_time():
-    output = f'Crescontrol time:\n'
-    (output, time_taken) = execute_command_and_report('time:daytime', output=output)
+    logging.info(f'Crescontrol time:')
+    output = execute_command_and_report('time:daytime')
     return output
 
-def create_schedule_if_not_exists(schedule_name, output="", total_time=0):
+def create_schedule_if_not_exists(schedule_name):
     """
     This function creates a schedule with the given name
     """
     status = False
-    output += f'Creating schedule {schedule_name} if not existant:\n'
+    logging.info(f'Creating schedule {schedule_name} if not existant:')
     # Check if schedule exists already, if not, creates it.
-    (output,_) = execute_command_and_report(f'schedule:get-name("{schedule_name}")',                                output=output)
+    output = execute_command_and_report(f'schedule:get-name("{schedule_name}")')
     if ' error : a schedule with this name does not exist ' not in output:
-        output += f'Schedule {schedule_name} already exists :-).\n\n'
+        logging.info(f'Schedule {schedule_name} already exists :-).')
         return output, True
     else:
-        output += f'Creating schedule {schedule_name} :-).\n'
-        (output,total_time) = execute_command_and_report(f'schedule:add("{schedule_name}")',                        output=output, total_time=total_time)
-        #(output,total_time) = execute_command_and_report(f'schedule:set-daily("{schedule_name}")',                  output=output, total_time=total_time)
+        logging.info(f'Creating schedule {schedule_name} :-).')
+        output = execute_command_and_report(f'schedule:add("{schedule_name}")')
+        status = ('success' in output)
         # Check if the request was successful (status code 200)
-        if total_time < 2000:
-            # Print the response content (the HTML of the webpage in this case)
-            status =  True
-            output += f'{schedule_name} successfully created in {round_thousands_second_time_delta(total_time)} secs :-).\n\n'
+        if status:
+            logging.info(f'{schedule_name} successfully created :-).')
         else:
-            status =  False
-            output += f'Failed to create {schedule_name} :-(.\n\n'
-        return output, status
+            logging.error(f'Failed to create {schedule_name} :-(.')
+        return status
 
 def send_schedules_to_crescontrol(schedule_dic):
     """
@@ -743,29 +737,62 @@ def send_schedules_to_crescontrol(schedule_dic):
     keys of dic are the schedule names, content is a tuple containing the schedule
     and the out name it has to modulate.
     """
-    status = True
-    output = ''
+    global_status = True
     for schedule_name, (schedule, out_port) in schedule_dic.items():
-        total_time = 0
-        output += f'Sending schedule data for schedule {schedule_name} to modulate {out_port}:\n'
+        logging.info(f'Sending schedule data for schedule {schedule_name} to modulate {out_port}:')
 
-        (output,total_time) = create_schedule_if_not_exists(schedule_name,                                          output=output, total_time=total_time)
-        (output,total_time) = execute_command_and_report(f'schedule:set-enabled("{schedule_name}",0)',              output=output, total_time=total_time)
-        (output,total_time) = execute_command_and_report(f'schedule:set-parameter("{schedule_name}","{out_port}:voltage")', output=output, total_time=total_time)
-        (output,total_time) = execute_command_and_report(f'schedule:set-timetable("{schedule_name}","{schedule}")', output=output, total_time=total_time)
-        (output,total_time) = execute_command_and_report(f'schedule:set-resolution("{schedule_name}",0.05,0.02)',   output=output, total_time=total_time)
-        (output,total_time) = execute_command_and_report(f'schedule:set-enabled("{schedule_name}",1)',              output=output, total_time=total_time)
-        (output,total_time) = execute_command_and_report(f'schedule:save("{schedule_name}")',                       output=output, total_time=total_time)
+        status = create_schedule_if_not_exists(schedule_name)
+        global_status = global_status and status
+        if not status:
+            logging.warning(f'Schedule {schedule_name} encountered a problem during its creation or search, passing it.')
+            continue
+        logging.info(f'Schedule {schedule_name} created or existing already :-).')
 
-        # Check if the request was successful
-        if total_time < 8000:
-            output += f'{schedule_name} successfully updated in {round_thousands_second_time_delta(total_time)} secs :-).\n\n'
-            status = status and True
-        else:
-            output += f'Failed to update {schedule_name} :-(.\n\n'
-            status = status and False
+        output = execute_command_and_report(f'schedule:set-enabled("{schedule_name}",0)')
+        global_status = global_status and ('success' in output)
+        if not status:
+            logging.warning(f'Schedule {schedule_name} encountered a problem during its disabling, passing it.')
+            continue
+        logging.info(f'Schedule {schedule_name} disabled :-).')
+
+        output = execute_command_and_report(f'schedule:set-parameter("{schedule_name}","{out_port}:voltage")')
+        global_status = global_status and ('success' in output)
+        if not status:
+            logging.warning(f'Schedule {schedule_name} encountered a problem during its parameter:voltage setting, passing it.')
+            continue
+        logging.info(f'Schedule {out_port}:voltage set as parameter of {schedule_name} :-).')
+
+        output = execute_command_and_report(f'schedule:set-timetable("{schedule_name}","{schedule}")')
+        global_status = global_status and (schedule in output)
+        if not status:
+            logging.warning(f'Schedule {schedule_name} encountered a problem during its schedule setting, passing it.')
+            continue
+        logging.info(f'Schedule {schedule_name} schedule updated :-).')
+
+        res = '0.05,0.02'
+        output = execute_command_and_report(f'schedule:set-resolution("{schedule_name}",{res})')
+        global_status = global_status and (res in output)
+        if not status:
+            logging.warning(f'Schedule {schedule_name} encountered a problem during its resolution setting, passing it.')
+            continue
+        logging.info(f'Schedule {schedule_name} resolution set at {res} :-).')
+
+        output = execute_command_and_report(f'schedule:set-enabled("{schedule_name}",1)')
+        global_status = global_status and ('success' in output)
+        if not status:
+            logging.warning(f'Schedule {schedule_name} encountered a problem during its enabling, passing it.')
+            continue
+        logging.info(f'Schedule {schedule_name} enabled :-).')
+
+        output = execute_command_and_report(f'schedule:save("{schedule_name}")')
+        global_status = global_status and ('success' in output)
+        if not status:
+            logging.warning(f'Schedule {schedule_name} encountered a problem during its saving, passing it.')
+            continue
+        logging.info(f'Schedule {schedule_name} saved :-).\n')
+
         time.sleep(PAUSE_BETWEEN_QUERIES)
-    return output, status
+    return output, global_status
 
 
 # --- Other functions ----------------------------------------------------------

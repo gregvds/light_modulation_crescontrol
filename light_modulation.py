@@ -35,98 +35,115 @@ def get_args():
     Currently, light_modulation_schedule generates three schedules:
     - one for FLUXengine 3500K, mainly active at dawn and dusk
     - one for FLUXengine 5000K, during all day
-    - one for APEXengine 385nm, around the mid part of the day.
+    - one for APEXengine 385nm, around the mid part of the day
+    - one for APEXengine 660nm, mainly active at dawn and dusk
     !! Be sure to adapt light_modulation_settings.py to your environment !!""",
                                      formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument("-d",
-                        "--debug",
-                        action='store_true',
-                        help="Debug mode: does not send schedules to Crescontrol")
     parser.add_argument("-p",
                         "--plot",
+                        action='count',
+                        help="plot mode, cumulative: show several plots for schedules and schedule creation")
+    parser.add_argument("-v",
+                        "--verbosity",
+                        action='count',
+                        help="verbosity mode, cumulative: -v for warning level, -vv for info level, -vvv for debug level")
+    parser.add_argument("-q",
+                        "--noquery",
                         action='store_true',
-                        help="Plot mode: show several plots for schedules in debug mode")
+                        help="No queries sent to CresControl")
+    parser.add_argument("-m",
+                        "--nomail",
+                        action='store_true',
+                        help="No report sent by email")
 
     args = parser.parse_args()
+    if args.verbosity is None:
+        args.verbosity = 0
+    if args.plot is None:
+        args.plot = 0
     return args
 
-def set_log(debug=False):
+def set_log(verbosity):
     """
     """
     lml.plt.set_loglevel (level = 'warning')
-    level = logging.INFO
-    if debug:
+    level = logging.ERROR
+    if verbosity == 1:
+        level = logging.WARNING
+    elif verbosity == 2:
+        level = logging.INFO
+    elif verbosity == 3:
         level = logging.DEBUG
     logging.basicConfig(handlers=[
                             logging.FileHandler(os.path.join(LOCALDIRN, LOGFILE), mode='w'),
                             logging.StreamHandler(sys.stdout)
                         ],
-                        format='-- %(asctime)s -- [%(levelname)s]: %(message)s',
+                        format='-- %(asctime)s -- [%(levelname)s]:\n%(message)s',
                         datefmt='%m/%d/%Y %I:%M:%S %p',
                         level=level)
 
 def main():
-    logging.info('\nScript for daily generation of lighting schedules\n')
-    logging.info(f'Sending from            system on {local_ip}\n')
+    args = get_args()
+    set_log(args.verbosity)
+
+    lms.PLOT = args.plot > 1
+
+    logging.info('Script for daily generation of lighting schedules\n')
     logging.info(f'Current day and time of system on {local_ip}: {lml.datetime.datetime.now():%d %b %Y - %H:%M:%S}')
 
     # First we generate all the schedules
-    schedule_dic, result_for_mail = lms.generate_schedules(debug=args.debug)
-    
-    logging.info("Produced schedules:\n")
-    for schedule_name, (schedule_string, out_name) in schedule_dic.items():
-        logging.info(f'Schedule {schedule_name} for {out_name}:\n{schedule_string}\n')
-    logging.info('\n\n')
+    schedule_dic, result_for_mail = lms.generate_schedules(debug=(args.plot>=1))
 
-    # then we send them to the Crescontrol, if not in debug mode
-    if not args.debug:
+    logging.debug("Produced schedules:\n")
+    for schedule_name, (schedule_string, out_name) in schedule_dic.items():
+        logging.debug(f'Schedule {schedule_name} for {out_name}:\n{schedule_string}\n')
+    logging.debug('\n\n')
+    logging.info(result_for_mail)
+
+    # then we send them to the Crescontrol, if not in no query mode
+    if not args.noquery:
+        logging.info(f'Sending from            system on {local_ip}')
         # Let's find out if CresControl is reachable:
-        result, status = lml.test_crescontrol_online()
-        logging.info(result)
-        result_for_mail += result
-        result_for_mail += "\n"
+        status = lml.test_crescontrol_online()
         if status is True:
             # Let's be sure the Crescontrol time is aligned on the good timezone:
-            result, status = lml.set_crescontrol_timezone(lml.TIMEZONE)
-            logging.info(result)
-            result_for_mail += result
-            result_for_mail += "\n"
+            result = lml.set_crescontrol_timezone(lml.TIMEZONE)
+            if str(lml.TIMEZONE) in result:
+                logging.info(f'Crescontrol time zone set to {lml.TIMEZONE} :-).\n')
+            else:
+                logging.warning(f'Problem setting the Crescontrol timezone :-(.')
 
             # Post of schedules to CresControl
             result, status2 = lml.send_schedules_to_crescontrol(schedule_dic)
             logging.info(result)
             if status2 is True:
-                logging.info('Schedules sent :-).\n\n')
+                logging.info('Schedules sent :-).')
             else:
-                logging.error(f'Problem sending schedules :-(.\n')
-            result_for_mail += result
-            result_for_mail += "\n"
+                logging.error(f'Problem sending schedules, please see logs :-(.')
 
             # Saving system configuration
-            response, time_taken = lml.execute_command_and_report('system:save()')
-            result_for_mail += response
-            result_for_mail += '\n'
-
-            result_for_mail += 'Finished.\n'
+            response = lml.execute_command_and_report('system:save()')
+            if "success" in response:
+                logging.info("New configuration saved on CresControl system :-).")
+            else:
+                logging.warn("Save attempt of Crescontrol system failed :-(.")
         else:
             # no CresControl found!
-            message = f"Crescontrol on {lms.CRESCONTROL_IP} was not found, nothing done!\n"
-            logging.warning(message)
-            result_for_mail += message
-        # Send of mail
-        lml.send_mail(result_for_mail)
-    logging.info(result_for_mail)
+            logging.warning(f"Crescontrol on {lms.CRESCONTROL_IP} was not found, nothing done!\n")
+    else:
+        logging.info("No queries sent to CresControl (arg -q received).")
     logging.info("Finished.")
+
+    # Send of mail if not in no mail mode
+    if not args.nomail:
+        logging.info("Sending logging by email (no arg -m received).")
+        with open(f'{os.path.join(LOCALDIRN, LOGFILE)}', mode = 'r') as file:
+            fileContent = file.read()
+            lml.send_mail(fileContent)
+    else:
+        logging.info("No mail sent (arg -m received).")
 
 # ------------------------------------------------------------------------------
 # -- Main use of code ----------------------------------------------------------
 if __name__ == "__main__":
-    args = get_args()
-
-    if args.plot:
-        args.debug = True
-        lms.PLOT = True
-
-    set_log(debug=args.debug)
-
     main()
