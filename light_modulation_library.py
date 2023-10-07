@@ -8,6 +8,7 @@
 
 # -- Imports for the generation of data_points
 import os
+import logging
 import math
 import itertools
 import operator
@@ -25,10 +26,11 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.widgets import Slider, RadioButtons
 import pandas as pd
-from matplotlib.animation import FuncAnimation
+import matplotlib.animation as animation
 
 # -- Imports for communication with crescontrol
 import time
+from pytz import timezone
 import socket
 import websocket
 import requests
@@ -51,6 +53,13 @@ def convert_human_hour_to_decimal_hour(hours_double_point_minutes_string):
     minutes = float(hours_double_point_minutes_string.split(":")[1])/60
     return hours+minutes
 
+def convert_decimal_hour_to_human_hour(hours_decimal):
+    """
+    This function takes a float decimal hour argument and formats it into
+    HHhmm.
+    """
+    return "%02dh%02d" % (hours_decimal, (hours_decimal*60)%60)
+
 def convert_datetime_to_decimal_hour(datetime):
     return(datetime.hour + datetime.minute/60 + datetime.second/3600)
 
@@ -62,7 +71,7 @@ def calculate_intensity(current_time, earliest_power_on, latest_power_off, ampli
     angles are themselves cosine functions, twice or thrice.
     """
     if mode not in ("cos", "cos2", "cos3"):
-        print(f"Error: mode received {mode} not recognized.\nPlease set mode to 'cos, 'cos2 or 'cos3'.")
+        logging.error(f"Error: mode received {mode} not recognized.\nPlease set mode to 'cos, 'cos2 or 'cos3'.")
         return
     # Calculate the current time in hours
     current_hour = convert_datetime_to_decimal_hour(current_time)
@@ -74,14 +83,36 @@ def calculate_intensity(current_time, earliest_power_on, latest_power_off, ampli
     # from earliest_power_on to latest_power_of
     if 0.0 <= fraction_of_day and fraction_of_day <= 1.0:
         if mode == "cos":
-            intensity = max(0, math.cos(cosine_angle) * amplitude_modulation)
+            intensity = max(0, math.cos(cosine_angle))
         elif mode == "cos2":
-            intensity = max(0, math.cos(-(math.pi/2) + (math.pi/2)*math.cos(cosine_angle)) * amplitude_modulation)
+            intensity = max(0, math.cos(-(math.pi/2) + (math.pi/2)*math.cos(cosine_angle)))
         else:
-            intensity = max(0, math.cos(-(math.pi/2) + (math.pi/2)*math.cos(-(math.pi/2) + (math.pi/2)*math.cos(cosine_angle))) * amplitude_modulation)
+            intensity = max(0, math.cos(-(math.pi/2) + (math.pi/2)*math.cos(-(math.pi/2) + (math.pi/2)*math.cos(cosine_angle))))
     else:
         intensity = 0.0
-    return intensity
+    return intensity * amplitude_modulation
+
+def calculate_intensity_2(current_time, earliest_power_on, latest_power_off, amplitude_modulation, maximum_broadness=4, transition_duration_minutes=None):
+    """
+    New methodology to draw the curve of the schedule, based on
+    cos(π/2 * sin(fraction_of_day (-π/2 to +π/2))^maximum_broadness
+    """
+    # Calculate the current time in hours
+    current_hour = convert_datetime_to_decimal_hour(current_time)
+    earliest_power_on -= transition_duration_minutes/60.0
+    latest_power_off += transition_duration_minutes/60.0
+
+    # Calculate the fraction of the day passed
+    fraction_of_day = (current_hour - earliest_power_on) / (latest_power_off - earliest_power_on)
+    # Calculate the angle for the cosine curve within the interval from -π/2 to +π/2
+    cosine_angle = math.pi * (fraction_of_day - 0.5)
+    # Calculate a simple intensity using the positive half of the cosine curve
+    # from earliest_power_on to latest_power_of
+    if 0.0 <= fraction_of_day and fraction_of_day <= 1.0:
+        intensity = max(0, math.cos((math.pi/2)*(math.sin(cosine_angle)**maximum_broadness)))
+    else:
+        intensity = 0.0
+    return intensity * amplitude_modulation
 
 def smooth_transition_intensity(data_points_seconds, earliest_power_on, latest_power_off, transition_duration_minutes, overspill_proportion, smoothing_iteration):
     """
@@ -250,14 +281,14 @@ def mod_on_off_times(earliest_power_on, latest_power_off, mode='centered', lengt
     elif mode == 'dawn':
         # finishes early in proportion with the day duration
         earliest_power_on    += shift
-        latest_power_off     = (earliest_power_on + day_length * length_proportion) + shift
+        latest_power_off     = (earliest_power_on + day_length * length_proportion)# + shift
     elif mode == 'dusk':
         # begins late in proportion with the day duration
-        earliest_power_on    = (latest_power_off - day_length * length_proportion) + shift
         latest_power_off     += shift
+        earliest_power_on    = (latest_power_off - day_length * length_proportion)# + shift
     return earliest_power_on, latest_power_off
 
-def get_modulated_max_intensity(current_date, earliest_power_on, latest_power_off, amplitude_modulation=None):
+def get_modulated_max_intensity(current_date, earliest_power_on, latest_power_off):
     """
     New methodology to calculate amplitude modulation based on current day length
     compared to the longest day of the year (namely the Summer Solstice day)
@@ -268,12 +299,13 @@ def get_modulated_max_intensity(current_date, earliest_power_on, latest_power_of
     winter_solstice_day_length = get_winter_solstice_sunset() - get_winter_solstice_sunrise()
     # This goes from 0 at the winter solstice to 1 at the summer solstice
     reduction_proportion = (day_length - winter_solstice_day_length) / (summer_solstice_day_length - winter_solstice_day_length)
-    if amplitude_modulation is None:
-        amplitude_modulation = 0.9
+    logging.debug(f'reduction proportion of maximum intensity: {reduction_proportion}')
+    amplitude_modulation = 0.9
     modulated_max_intensity = amplitude_modulation + (1.0 - amplitude_modulation) * reduction_proportion
+    logging.debug(f'Modulated maximum intensity: {modulated_max_intensity}')
     return modulated_max_intensity
 
-def calculate_Schedule(current_date, earliest_power_on, latest_power_off, modulated_max_intensity, curve_mode='cos'):
+def calculate_Schedule(current_date, earliest_power_on, latest_power_off, modulated_max_intensity, maximum_broadness=None, transition_duration_minutes=0):
     """
     """
     # Calculates all tuples (time_in_second, intensity) for the current day
@@ -284,7 +316,8 @@ def calculate_Schedule(current_date, earliest_power_on, latest_power_off, modula
     max_iterations      = 24 * 60 // TIME_STEP_MINUTES                  # Maximum number of iterations (1 day)
     iterations          = 0                                             # Counter for iterations
     while iterations < max_iterations:
-        intensity = calculate_intensity(current_datetime, earliest_power_on, latest_power_off, modulated_max_intensity, mode=curve_mode)
+        intensity=0
+        intensity = calculate_intensity_2(current_datetime, earliest_power_on, latest_power_off, modulated_max_intensity, maximum_broadness=maximum_broadness, transition_duration_minutes=transition_duration_minutes)
         intensity = max(0,intensity)
         # Calculate time in seconds, starting from midnight of the current day
         time_in_seconds = int((current_datetime - datetime.datetime(current_date.year, current_date.month, current_date.day)).total_seconds())
@@ -296,7 +329,7 @@ def calculate_Schedule(current_date, earliest_power_on, latest_power_off, modula
         iterations += 1
     return data_points_seconds, data_points_hours
 
-def create_intensity_data_suntime(maximum_voltage, amplitude_modulation=None, mode="centered", curve_mode="cos", length_proportion=1.0, shift_proportion=0.0, date=None, smoothing=True, transition_duration_minutes=60, plot=False):
+def create_intensity_data_suntime(maximum_voltage, amplitude_modulation=None, mode="centered", length_proportion=1.0, shift_proportion=0.0, date=None, maximum_broadness=4, transition_duration_minutes=0, plot=False):
     """
     Create a list of times and intensities throughout the day (packed in tuples).
     This function uses latitude and longitude to generate earliest_power_on and
@@ -310,10 +343,10 @@ def create_intensity_data_suntime(maximum_voltage, amplitude_modulation=None, mo
     """
     # check inputs for proper content and values
     if mode not in ('centered', 'dawn', 'dusk'):
-        print(f"Error: {mode} is not a recognized working mode for this function.\nPlease choose either 'centered', 'dawn' or 'dusk'.")
+        logging.error(f"Error: {mode} is not a recognized working mode for this function.\nPlease choose either 'centered', 'dawn' or 'dusk'.")
         return
     if not ((0.0 <= length_proportion) and (length_proportion <= 1.5)):
-        print(f"Error: length_proportion {length_proportion} should be in the range 0.0-1.5.")
+        logging.error(f"Error: length_proportion {length_proportion} should be in the range 0.0-1.5.")
         return
     current_date        = date if date is not None else datetime.date.today()
 
@@ -321,19 +354,13 @@ def create_intensity_data_suntime(maximum_voltage, amplitude_modulation=None, mo
     sun                 = Sun(LATITUDE, LONGITUDE)
     earliest_power_on   = convert_datetime_to_decimal_hour(sun.get_sunrise_time(current_date) + datetime.timedelta(seconds=3600*TIMEZONE))
     latest_power_off    = convert_datetime_to_decimal_hour(sun.get_sunset_time(current_date) + datetime.timedelta(seconds=3600*TIMEZONE))
-    modulated_max_intensity = get_modulated_max_intensity(current_date, earliest_power_on, latest_power_off, amplitude_modulation=amplitude_modulation)
+    modulated_max_intensity = get_modulated_max_intensity(current_date, earliest_power_on, latest_power_off)
 
     # moves power ON and OFF times according to the mode and the length proportion
     (earliest_power_on, latest_power_off) = mod_on_off_times(earliest_power_on, latest_power_off, mode=mode, length_proportion=length_proportion, shift_proportion=shift_proportion)
 
     # generates schedule for the current day with its power ON/OFF times, max intensity and curve_mode
-    (data_points_seconds, data_points_hours) = calculate_Schedule(current_date, earliest_power_on, latest_power_off, modulated_max_intensity, curve_mode=curve_mode)
-
-    # Adds smoothing to begin and end of curve if required
-    if smoothing is True:
-        overspill_proportion = 0.85
-        smoothing_iteration = 1
-        data_points_seconds = smooth_transition_intensity(data_points_seconds, earliest_power_on, latest_power_off, transition_duration_minutes, overspill_proportion, smoothing_iteration)
+    (data_points_seconds, data_points_hours) = calculate_Schedule(current_date, earliest_power_on, latest_power_off, modulated_max_intensity, maximum_broadness=maximum_broadness, transition_duration_minutes=transition_duration_minutes)
 
     # returns scaled schedules for the voltage required and a few more infos for reporting
     return scale_data_points_seconds(data_points_seconds, maximum_voltage, plot=plot), scale_data_points_seconds(data_points_hours, maximum_voltage), earliest_power_on, latest_power_off, modulated_max_intensity
@@ -507,7 +534,7 @@ def clean_intermediate_flats_from_data_points_seconds(data_points_seconds, tresh
     # Iterate through the result, skipping central zero intensities
     for time, intensity in data_points_seconds[1:-1]:
         if (abs(left_intensity-intensity) < treshold) and (abs(intensity-right_intensity) < treshold)\
-           or (time < 10800 or time > 79200):
+           or (time < 10800 or time > 82800):
             left_intensity = intensity
             position +=1
             right_intensity = data_points_seconds[min(position+1,max_position)][1]
@@ -659,6 +686,7 @@ def set_crescontrol_led_verbosity(level):
         (output, time_taken) = execute_command_and_report(f'led:verbosity={level}', output=output)
         return output, time_taken
     else:
+        logging.error(f'Faulty value. Must be between 0 and 3 included')
         return f'Faulty value. Must be between 0 and 3 included', 0,0
 
 def get_crescontrol_websocket_remote_allow_connection():
@@ -676,6 +704,7 @@ def set_crescontrol_websocket_remote_allow_connection(value):
         (output, time_taken) = execute_command_and_report(f'websocket:remote:allow-connection={value}', output=output)
         return output, time_taken
     else:
+        logging.error(f'Faulty value. Must be 0 or 1')
         return f'Faulty value. Must be 0 or 1', 0.0
 
 def get_crescontrol_time():
@@ -691,13 +720,13 @@ def create_schedule_if_not_exists(schedule_name, output="", total_time=0):
     output += f'Creating schedule {schedule_name} if not existant:\n'
     # Check if schedule exists already, if not, creates it.
     (output,_) = execute_command_and_report(f'schedule:get-name("{schedule_name}")',                                output=output)
-    if '"error":"a schedule with this name does not exist"' not in output:
+    if ' error : a schedule with this name does not exist ' not in output:
         output += f'Schedule {schedule_name} already exists :-).\n\n'
         return output, True
     else:
         output += f'Creating schedule {schedule_name} :-).\n'
         (output,total_time) = execute_command_and_report(f'schedule:add("{schedule_name}")',                        output=output, total_time=total_time)
-        (output,total_time) = execute_command_and_report(f'schedule:set-daily("{schedule_name}")',                  output=output, total_time=total_time)
+        #(output,total_time) = execute_command_and_report(f'schedule:set-daily("{schedule_name}")',                  output=output, total_time=total_time)
         # Check if the request was successful (status code 200)
         if total_time < 2000:
             # Print the response content (the HTML of the webpage in this case)
@@ -746,7 +775,7 @@ def get_module_json(module_name, refresh_json=False):
     This function download the json for the named module if needed.
     """
     if not os.path.isfile(f'./{module_name}.json') or refresh_json:
-        response = requests.get(f'https://raw.cre.science/products/modules/modules/{module_name}.json')
+        response = requests.get(f'{CS_JSN_URL}{module_name}.json')
         with open(f'./{module_name}.json', mode = 'wb') as file:
             file.write(response.content)
     f = f'./{module_name}.json'
@@ -783,7 +812,7 @@ def get_ppe_for_i(module_json_dic, i_value):
     """
     return interpolate_value_for_i(module_json_dic, "I_photon_efficiency", i_value)
 
-def get_dli_by_m2(data_points_seconds, driver_maximum_intensity, module_json_dic, lit_area):
+def get_dli_by_m2(data_points_seconds, driver_maximum_intensity, module_json_dic, lit_area, plot=False):
     """
     This function calculates DLI (µmol/m²/day) as = PPE(I)*U(I)*I, integrated
     Throughout the scheduled intensities I.
@@ -802,8 +831,43 @@ def get_dli_by_m2(data_points_seconds, driver_maximum_intensity, module_json_dic
                     for j in range(len(u_values))
                     if i == j]
 
-    # Calculates DLI by integrating PPF according to schedule using the Simpson's rule.
-    dli_by_m2 = simps(ppf_values, t_values)/lit_area
+    # Calculates DLI by integrating PPF according to schedule using the Trapezoid methodology.
+    dli_by_m2 = trapz(ppf_values, t_values)/lit_area
+    logging.debug(dli_by_m2)
+
+    if plot:
+        # Create subplots for v_values, i_values, u_values, and ppf_values
+        fig, axs = plt.subplots(4, 1, figsize=(10, 8))
+
+        # Plot v_values
+        axs[0].plot(t_values, v_values, label='v_values')
+        axs[0].set_ylabel('v_values')
+
+        # Plot i_values
+        axs[1].plot(t_values, i_values, label='i_values')
+        axs[1].set_ylabel('i_values')
+
+        # Plot u_values
+        axs[2].plot(t_values, u_values, label='u_values')
+        axs[2].set_ylabel('u_values')
+
+        # Plot ppf_values
+        axs[3].plot(t_values, ppf_values, label='ppf_values')
+        axs[3].set_xlabel('t_values')
+        axs[3].set_ylabel('ppf_values')
+
+        # Add a common x-axis label
+        axs[-1].set_xlabel('t_values')
+
+        # Display legends
+        for ax in axs:
+            ax.legend()
+
+        plt.tight_layout()
+        #plt.show()
+        plt.pause(0.5)
+        plt.close(fig=fig)
+
     return dli_by_m2
 
 
@@ -812,13 +876,6 @@ def get_local_ip():
                         [[(s.connect(('8.8.8.8', 53)),
                            s.getsockname()[0],
                            s.close()) for s in [socket.socket(socket.AF_INET, socket.SOCK_DGRAM)]][0][1]]) if l][0][0]
-
-def printAndLog(myLine, myFile):
-    '''
-    Print something and writes it also to given log file
-    '''
-    print(myLine)
-    myFile.write(myLine+'\n')
 
 def send_mail(email_message):
     """
@@ -902,7 +959,7 @@ def animate_yearly_schedule(maximum_voltage, save_path=None):
         ax.grid(True)
 
     # Create the animation
-    anim = FuncAnimation(fig, update_plot, frames=pd.date_range(start_date, end_date), interval=100)
+    anim = animation.FuncAnimation(fig, update_plot, frames=pd.date_range(start_date, end_date), interval=100)
     if save_path:
         anim.save(save_path, writer='pillow', fps=10)  # Save the animation to a file
     plt.show()  # Display the animated plot
@@ -1021,16 +1078,54 @@ def create_plot(schedule_dic, color_dic, timing=5.0):
     Demo of capability and debug/confirmation of schedules generated
     """
     #plt.ion()
-    fig, ax = plt.subplots(figsize=(10, 6))
+    fig, ax = plt.subplots(figsize=(11, 6))
+    fig.set_facecolor("dimgrey")
+    ax.set_facecolor("dimgrey")
     #fig = plt.figure(figsize=(10, 6))
     for (label, schedule) in schedule_dic.items():
         # Unpack the time and intensity values
         times, intensities = zip(*schedule[0])
         # Create a plot and add lines
         ax.plot(times, intensities, label=label, marker='o', linestyle='-', color=color_dic[label])
+    current_date        = datetime.date.today()
+    sun                 = Sun(LATITUDE, LONGITUDE)
+    sunrise_time_Seconds   = 3600 * convert_datetime_to_decimal_hour(sun.get_sunrise_time(current_date) + datetime.timedelta(seconds=3600*TIMEZONE))
+    sunset_time_seconds    = 3600 * convert_datetime_to_decimal_hour(sun.get_sunset_time(current_date) + datetime.timedelta(seconds=3600*TIMEZONE))
+    solstice_sum_sunrise = 3600 * get_summer_solstice_sunrise()
+    solstice_sum_sunset = 3600 * get_summer_solstice_sunset()
+    solstice_win_sunrise = 3600 * get_winter_solstice_sunrise()
+    solstice_win_sunset = 3600 * get_winter_solstice_sunset()
+
+    sunrise_sunset_ys = (0, 10)
+    ax.plot((solstice_sum_sunrise, solstice_sum_sunrise), sunrise_sunset_ys, label='Summer Solstice Sunrise', linestyle=':', color='gold')
+    ax.plot((sunrise_time_Seconds, sunrise_time_Seconds), sunrise_sunset_ys, label=f'Current Sunrise ({convert_decimal_hour_to_human_hour(sunrise_time_Seconds/3600)})', linestyle='--', color='goldenrod')
+    ax.plot((solstice_win_sunrise, solstice_win_sunrise), sunrise_sunset_ys, label='Winter Solstice Sunrise', linestyle=':', color='darkgoldenrod')
+    ax.plot((solstice_sum_sunset, solstice_sum_sunset), sunrise_sunset_ys, label='Summer Solstice Sunset', linestyle=':', color='lightcoral')
+    ax.plot((sunset_time_seconds, sunset_time_seconds), sunrise_sunset_ys, label=f'Current Sunset ({convert_decimal_hour_to_human_hour(sunset_time_seconds/3600)})', linestyle='--', color='indianred')
+    ax.plot((solstice_win_sunset, solstice_win_sunset), sunrise_sunset_ys, label='Winter Solstice Sunset', linestyle=':', color='firebrick')
     # Set the x-axis and y-axis limits
     plt.xlim(0, 86400)  # Replace xmin and xmax with your desired minimum and maximum for the x-axis
     plt.ylim(0.0, 10)  # Replace ymin and ymax with your desired minimum and maximum for the y-axis
+
+    # Create a function to update the vertical line
+    def update_vertical_line(num, line, ax, legend):
+        #legend = ax.legend()
+        #legend.remove()
+        current_time = datetime.datetime.now(timezone('Europe/Brussels'))  # Replace 'Your_Timezone' with your desired timezone
+        current_time_seconds = (current_time - current_time.replace(hour=0, minute=0, second=0, microsecond=0)).total_seconds()
+        line.set_xdata([current_time_seconds, current_time_seconds])
+        line.set_label(f'Current Time ({current_time.strftime("%H:%M:%S")})')
+
+        legend = ax.legend()
+        return line,
+
+    # Create the vertical line
+    current_time_line, = ax.plot([0, 0], [0, 10], label='Current Time ()', linestyle='--', color='white')
+
+    # Set the x-axis and y-axis limits (same as in your code)
+    plt.xlim(0, 86400)
+    plt.ylim(0.0, 10)
+
     # Customize grid steps (tick intervals) for x and y axes
     x_ticks = np.arange(0, 86401, 3600)  # Define x-axis tick positions at intervals of one hour
     y_ticks = np.arange(0.0, 10.1, 0.5)  # Define y-axis tick positions at intervals of 10V
@@ -1043,9 +1138,15 @@ def create_plot(schedule_dic, color_dic, timing=5.0):
     ax.set_title('Intensity Comparison')
     ax.grid(True)
     # Add a legend
-    ax.legend()
-    plt.pause(timing)
-    plt.close(fig=fig)
+    legend = ax.legend()
+    fig.savefig('./schedules.png')
+    # Create an animation to update the vertical line every 10 seconds
+    ani = animation.FuncAnimation(fig, update_vertical_line, fargs=(current_time_line, ax, legend),
+                                  interval=10, blit=True)
+    plt.show()
+
+    #plt.pause(timing)
+    #plt.close(fig=fig)
 
 
 # ------------------------------------------------------------------------------

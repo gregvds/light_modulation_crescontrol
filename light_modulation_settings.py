@@ -12,16 +12,20 @@
 TIME_STEP_MINUTES = 5
 
 # -- Constants for email reporting
-# ! COMPLETE THESE !
 SMTP_SERVER = ""
 SENDER_EMAIL = ""
 SENDER_PASSWORD = ""
 RECEIVER_EMAIL = ""
+
+# -- Crescontrol url - IP address or domain name (SSID) crescontrol_gregvds
 RPI_IP = ""                                     # IP of the Raspberry pi executing the main script
 CRESCONTROL_IP = ""                             # IP of the CresControl where schedule are to be sent
 CRESCONTROL_URL = f'http://{CRESCONTROL_IP}'
 CRESCONTROL_CPU_ID = ''                         # curl http://CRESCONTROL_IP/commands?query=\"system:cpu-id\"
 PAUSE_BETWEEN_QUERIES = 10                      # seconds, this to allow the CC pile to be treated in case of large query
+
+# Cre.Science json database url
+CS_JSN_URL = "https://raw.cre.science/products/modules/modules/"
 
 # lat lon of kind of Poffader in the northern hemispher
 # adapt this to your place to follow your daylight or to simulate daylight of
