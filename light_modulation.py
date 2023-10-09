@@ -78,8 +78,8 @@ def set_log(verbosity):
                             logging.FileHandler(os.path.join(LOCALDIRN, LOGFILE), mode='w'),
                             logging.StreamHandler(sys.stdout)
                         ],
-                        format='-- %(asctime)s -- [%(levelname)s]:\n%(message)s',
-                        datefmt='%m/%d/%Y %I:%M:%S %p',
+                        format='-- %(asctime)s -- [%(levelname)s]:\n-> %(message)s\n',
+                        datefmt='%d %b %Y %H:%M:%S',
                         level=level)
 
 def main():
@@ -88,16 +88,16 @@ def main():
 
     lms.PLOT = args.plot > 1
 
-    logging.info('Script for daily generation of lighting schedules\n')
+    logging.info('Script for daily generation of lighting schedules')
     logging.info(f'Current day and time of system on {local_ip}: {lml.datetime.datetime.now():%d %b %Y - %H:%M:%S}')
 
     # First we generate all the schedules
     schedule_dic, result_for_mail = lms.generate_schedules(debug=(args.plot>=1))
 
-    logging.debug("Produced schedules:\n")
-    for schedule_name, (schedule_string, out_name) in schedule_dic.items():
-        logging.debug(f'Schedule {schedule_name} for {out_name}:\n{schedule_string}\n')
-    logging.debug('\n\n')
+    logging.debug("Produced schedules:")
+    for schedule_name, (schedule_string, out_name, meta) in schedule_dic.items():
+        logging.debug(f'Schedule {schedule_name} for {out_name}:\n{schedule_string}')
+        logging.debug(f'Meta for schedule {schedule_name}:\n{meta}')
     logging.info(result_for_mail)
 
     # then we send them to the Crescontrol, if not in no query mode
@@ -114,8 +114,7 @@ def main():
                 logging.warning(f'Problem setting the Crescontrol timezone :-(.')
 
             # Post of schedules to CresControl
-            result, status2 = lml.send_schedules_to_crescontrol(schedule_dic)
-            logging.info(result)
+            status2 = lml.send_schedules_to_crescontrol(schedule_dic)
             if status2 is True:
                 logging.info('Schedules sent :-).')
             else:

@@ -9,6 +9,7 @@
 # -- Import for the generation of data_points and communications
 import light_modulation_library as lml
 import os
+import logging
 
 # ------------------------------------------------------------------------------
 
@@ -252,6 +253,7 @@ def generate_schedules(debug=False):
 
     # --------------------------------------------------------------------------
     # Generation of schedule for FLUXengines 3500K
+    number_of_modules_in_serie_3500K = 6
     driver_maximum_intensity_3500K   = 610                                     # This is the maximum Amper your led driver can produce
     driver_minimal_voltage_for_light_3500K = 0.79                               # This is the minimal voltage dim signal the driver reacts to
     maximum_intensity_required_3500K = driver_maximum_intensity_3500K*(500/610) # This is the maximum Amper you want the driver to deliver during the schedule
@@ -265,6 +267,7 @@ def generate_schedules(debug=False):
 
     # --------------------------------------------------------------------------
     # Generation of schedule for FLUXengines 5000K
+    number_of_modules_in_serie_5000K = 6
     driver_maximum_intensity_5000K   = 1050                                     # This is the maximum Amper your led driver can produce
     driver_minimal_voltage_for_light_5000K = 0.79                               # This is the minimal voltage dim signal the driver reacts to
     maximum_intensity_required_5000K = driver_maximum_intensity_5000K*1         # This is the maximum Amper you want the driver to deliver during the schedule
@@ -283,6 +286,7 @@ def generate_schedules(debug=False):
 
     # --------------------------------------------------------------------------
     # Generation of schedule for APEXengines 385
+    number_of_modules_in_serie_385 = 5
     driver_maximum_intensity_385   = 600                                        # This is the maximum Amper your led driver can produce
     driver_minimal_voltage_for_light_385 = 0.75                                 # This is the minimal voltage dim signal the driver reacts to
     maximum_intensity_required_385 = driver_maximum_intensity_385*0.35          # This is the maximum Amper you want the driver to deliver during the schedule
@@ -295,6 +299,7 @@ def generate_schedules(debug=False):
 
     # --------------------------------------------------------------------------
     # Generation of schedule for APEXengines 660 MKIII
+    number_of_modules_in_serie_660 = 5
     driver_maximum_intensity_660   = 500                                        # This is the maximum Amper your led driver can produce
     driver_minimal_voltage_for_light_660 = 0.79                                 # This is the minimal voltage dim signal the driver reacts to
     maximum_intensity_required_660 = driver_maximum_intensity_660*0.20          # This is the maximum Amper you want the driver to deliver during the schedule
@@ -309,11 +314,17 @@ def generate_schedules(debug=False):
     # packing of all the schedules generated in a dictionary.
     # !! Key values ARE THE NAMES OF THE SCHEDULES DEFINED IN THE CRESCONTROL !!
     # !! Second element in tuple is the out name for the schedule to modulate !!
+    # !! Third element is the meta info for Cre.Science HUB.
+    meta_3500 = 'out-a:meta="{\\"unit\\":\\"A\\",\\"module\\":{\\"driver\\":{\\"configuration\\":[' + f'{number_of_modules_in_serie_3500K:1d}' + ',1],\\"id\\":\\"MW-XLG-150-LAB\\"},\\"id\\":\\"CSC-FXE-140-C-35\\"},\\"type\\":\\"light\\",\\"icon\\":\\"sysFluxEngine\\",\\"id\\":\\"CSC-FXE-140-C-35\\",\\"name\\":\\"FXengine 3500K\\",\\"ecos\\":[\\"Lithops\\"],\\"curr\\":' + f'{(driver_maximum_intensity_3500K/1000):0.2f}' + '}"'
+    meta_5000 = 'out-b:meta="{\\"unit\\":\\"A\\",\\"module\\":{\\"driver\\":{\\"configuration\\":[' + f'{number_of_modules_in_serie_5000K:1d}' + ',1],\\"id\\":\\"MW-XLG-150-LAB\\"},\\"id\\":\\"CSC-FXE-140-C-50\\"},\\"type\\":\\"light\\",\\"icon\\":\\"sysFluxEngine\\",\\"id\\":\\"CSC-FXE-140-C-50\\",\\"name\\":\\"FXengine 5000K\\",\\"ecos\\":[\\"Lithops\\"],\\"curr\\":' + f'{(driver_maximum_intensity_5000K/1000):0.2f}' + '}"'
+    meta_385  = 'out-c:meta="{\\"unit\\":\\"A\\",\\"module\\":{\\"driver\\":{\\"configuration\\":[' + f'{number_of_modules_in_serie_385:1d}' + ',1],\\"id\\":\\"MW-LCM-040\\"},\\"id\\":\\"CSC-AXE-004-A-38\\"},\\"type\\":\\"light\\",\\"icon\\":\\"sysApexEngine\\",\\"id\\":\\"CSC-AXE-004-A-38\\",\\"name\\":\\"APEXengine 385 \\",\\"ecos\\":[\\"Lithops\\"],\\"curr\\":' + f'{(driver_maximum_intensity_385/1000):0.2f}' + '}"'
+    meta_660  = 'out-d:meta="{\\"unit\\":\\"A\\",\\"module\\":{\\"driver\\":{\\"configuration\\":[' + f'{number_of_modules_in_serie_660:1d}' + ',1],\\"id\\":\\"MW-XLG-025-XAB\\"},\\"id\\":\\"CSC-AXE-004-A-66\\"},\\"type\\":\\"light\\",\\"icon\\":\\"sysApexEngine\\",\\"id\\":\\"CSC-AXE-004-A-66\\",\\"name\\":\\"APEXengine 660 \\",\\"ecos\\":[\\"Lithops\\"],\\"curr\\":' + f'{(driver_maximum_intensity_660/1000):0.2f}' + '}"'
+
     schedule_dic = {
-        "schedule_3500" : (schedule_3500, "out-a"),
-        "schedule_5000" : (schedule_5000, "out-b"),
-        "schedule_385"  : (schedule_385,  "out-c"),
-        "schedule_660"  : (schedule_660,  "out-d")
+        "schedule_3500" : (schedule_3500, "out-a", meta_3500),
+        "schedule_5000" : (schedule_5000, "out-b", meta_5000),
+        "schedule_385"  : (schedule_385,  "out-c", meta_385),
+        "schedule_660"  : (schedule_660,  "out-d", meta_660)
     }
     color_dic = {
         "schedule_3500" : 'ivory',
