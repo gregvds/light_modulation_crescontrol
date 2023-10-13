@@ -103,7 +103,8 @@ def generate_5000K_schedule(schedule_name, driver_maximum_intensity, maximum_int
     daily_earliest_power_on,
     daily_latest_power_off,
     daily_maximum_intensity) = lml.create_intensity_data_suntime(maximum_voltage,
-                                                                 length_proportion=1.05,
+                                                                 length_proportion=1.055,
+                                                                 shift_proportion=0.0,
                                                                  transition_duration_minutes=transition_duration_minutes,
                                                                  maximum_broadness = 4,
                                                                  plot=PLOT)
@@ -128,7 +129,7 @@ def generate_385_schedule(schedule_name, driver_maximum_intensity, maximum_inten
     """
     # Parameters (you can adjust these)
     maximum_voltage = 10 * (maximum_intensity_required/driver_maximum_intensity)  # Maximum voltage (adjustable, 0-10V)
-    transition_duration_minutes = 40  # Duration of smooth transitions at the begin and end (x minutes)
+    transition_duration_minutes = 0
 
     # A simple curve is generated centered on midday, of a duration of 70% of the current day duration
     (data_points_seconds,
@@ -136,10 +137,10 @@ def generate_385_schedule(schedule_name, driver_maximum_intensity, maximum_inten
     daily_earliest_power_on,
     daily_latest_power_off,
     daily_maximum_intensity) = lml.create_intensity_data_suntime(maximum_voltage,
-                                                                 length_proportion=0.74,
-                                                                 shift_proportion=0.02,
+                                                                 length_proportion=0.85,
+                                                                 shift_proportion=0.0,
                                                                  transition_duration_minutes=transition_duration_minutes,
-                                                                 maximum_broadness = 4,
+                                                                 maximum_broadness = 5,
                                                                  plot=PLOT)
 
     # We save back the data and the modulated begin, end and max intensity
@@ -164,14 +165,14 @@ def generate_660_schedule(schedule_name, driver_maximum_intensity, maximum_inten
     """
     # Parameters (you can adjust these)
     maximum_voltage = 10 * (maximum_intensity_required/driver_maximum_intensity)  # Maximum voltage (adjustable, 0-10V)
-    transition_duration_minutes = 90  # Duration of smooth transitions at the begin and end (x minutes)
+    transition_duration_minutes = 60  # Duration of smooth transitions at the begin and end (x minutes)
 
     # A first curve is generated for dawn, of a duration of 25% of the current day duration
     (data_points_seconds_first,
     junk,
     daily_earliest_power_on,
     junk,
-    daily_maximum_intensity) = lml.create_intensity_data_suntime(maximum_voltage,
+    daily_maximum_intensity) = lml.create_intensity_data_suntime(maximum_voltage*0.8,
                                                                  mode="dawn",
                                                                  length_proportion=0.10,
                                                                  shift_proportion=0.05,
@@ -187,7 +188,7 @@ def generate_660_schedule(schedule_name, driver_maximum_intensity, maximum_inten
     junk) = lml.create_intensity_data_suntime(maximum_voltage,
                                               mode='dusk',
                                               length_proportion=0.15,
-                                              shift_proportion=-0.05,
+                                              shift_proportion=-0.07,
                                               transition_duration_minutes=transition_duration_minutes,
                                               maximum_broadness = 1,
                                               plot=PLOT)
@@ -255,7 +256,7 @@ def generate_schedules(debug=False):
     # Generation of schedule for FLUXengines 3500K
     number_of_modules_in_serie_3500K = 6
     driver_maximum_intensity_3500K   = 610                                     # This is the maximum Amper your led driver can produce
-    driver_minimal_voltage_for_light_3500K = 0.79                               # This is the minimal voltage dim signal the driver reacts to
+    driver_minimal_voltage_for_light_3500K = 0.75                               # This is the minimal voltage dim signal the driver reacts to
     maximum_intensity_required_3500K = driver_maximum_intensity_3500K*(500/610) # This is the maximum Amper you want the driver to deliver during the schedule
     schedule_3500_dic = generate_3500K_schedule("schedule_3500", driver_maximum_intensity_3500K, maximum_intensity_required_3500K)
     # Gating the data so the lowest values produce already light.
@@ -268,9 +269,9 @@ def generate_schedules(debug=False):
     # --------------------------------------------------------------------------
     # Generation of schedule for FLUXengines 5000K
     number_of_modules_in_serie_5000K = 6
-    driver_maximum_intensity_5000K   = 1050                                     # This is the maximum Amper your led driver can produce
-    driver_minimal_voltage_for_light_5000K = 0.79                               # This is the minimal voltage dim signal the driver reacts to
-    maximum_intensity_required_5000K = driver_maximum_intensity_5000K*1         # This is the maximum Amper you want the driver to deliver during the schedule
+    driver_maximum_intensity_5000K   = 1510                                     # This is the maximum Amper your led driver can produce
+    driver_minimal_voltage_for_light_5000K = 0.95                               # This is the minimal voltage dim signal the driver reacts to
+    maximum_intensity_required_5000K = driver_maximum_intensity_5000K*0.75         # This is the maximum Amper you want the driver to deliver during the schedule
     schedule_5000_dic = generate_5000K_schedule("schedule_5000", driver_maximum_intensity_5000K, maximum_intensity_required_5000K)
     # Remove light from 5000K that is already given by 3500K
     # (hence the scaling! and the need to know relative drivers maximum intensity settings).
@@ -288,8 +289,8 @@ def generate_schedules(debug=False):
     # Generation of schedule for APEXengines 385
     number_of_modules_in_serie_385 = 5
     driver_maximum_intensity_385   = 600                                        # This is the maximum Amper your led driver can produce
-    driver_minimal_voltage_for_light_385 = 0.75                                 # This is the minimal voltage dim signal the driver reacts to
-    maximum_intensity_required_385 = driver_maximum_intensity_385*0.35          # This is the maximum Amper you want the driver to deliver during the schedule
+    driver_minimal_voltage_for_light_385 = 0.71                                 # This is the minimal voltage dim signal the driver reacts to
+    maximum_intensity_required_385 = driver_maximum_intensity_385*0.6          # This is the maximum Amper you want the driver to deliver during the schedule
     schedule_385_dic = generate_385_schedule("schedule_385", driver_maximum_intensity_385, maximum_intensity_required_385)
     # Gating the data so the lowest values produce already light.
     # Depending on your led array and driver, you should adjust this
@@ -300,9 +301,9 @@ def generate_schedules(debug=False):
     # --------------------------------------------------------------------------
     # Generation of schedule for APEXengines 660 MKIII
     number_of_modules_in_serie_660 = 5
-    driver_maximum_intensity_660   = 500                                        # This is the maximum Amper your led driver can produce
-    driver_minimal_voltage_for_light_660 = 0.79                                 # This is the minimal voltage dim signal the driver reacts to
-    maximum_intensity_required_660 = driver_maximum_intensity_660*0.20          # This is the maximum Amper you want the driver to deliver during the schedule
+    driver_maximum_intensity_660   = 510                                        # This is the maximum Amper your led driver can produce
+    driver_minimal_voltage_for_light_660 = 0.9                                 # This is the minimal voltage dim signal the driver reacts to
+    maximum_intensity_required_660 = driver_maximum_intensity_660*0.30          # This is the maximum Amper you want the driver to deliver during the schedule
     schedule_660_dic = generate_660_schedule("schedule_660", driver_maximum_intensity_660, maximum_intensity_required_660)
     # Gating the data so the lowest values produce already light.
     # Depending on your led array and driver, you should adjust this
@@ -318,7 +319,7 @@ def generate_schedules(debug=False):
     meta_3500 = 'out-a:meta="{\\"unit\\":\\"A\\",\\"module\\":{\\"driver\\":{\\"configuration\\":[' + f'{number_of_modules_in_serie_3500K:1d}' + ',1],\\"id\\":\\"MW-XLG-150-LAB\\"},\\"id\\":\\"CSC-FXE-140-C-35\\"},\\"type\\":\\"light\\",\\"icon\\":\\"sysFluxEngine\\",\\"id\\":\\"CSC-FXE-140-C-35\\",\\"name\\":\\"FXengine 3500K\\",\\"ecos\\":[\\"Lithops\\"],\\"curr\\":' + f'{(driver_maximum_intensity_3500K/1000):0.2f}' + '}"'
     meta_5000 = 'out-b:meta="{\\"unit\\":\\"A\\",\\"module\\":{\\"driver\\":{\\"configuration\\":[' + f'{number_of_modules_in_serie_5000K:1d}' + ',1],\\"id\\":\\"MW-XLG-150-LAB\\"},\\"id\\":\\"CSC-FXE-140-C-50\\"},\\"type\\":\\"light\\",\\"icon\\":\\"sysFluxEngine\\",\\"id\\":\\"CSC-FXE-140-C-50\\",\\"name\\":\\"FXengine 5000K\\",\\"ecos\\":[\\"Lithops\\"],\\"curr\\":' + f'{(driver_maximum_intensity_5000K/1000):0.2f}' + '}"'
     meta_385  = 'out-c:meta="{\\"unit\\":\\"A\\",\\"module\\":{\\"driver\\":{\\"configuration\\":[' + f'{number_of_modules_in_serie_385:1d}' + ',1],\\"id\\":\\"MW-LCM-040\\"},\\"id\\":\\"CSC-AXE-004-A-38\\"},\\"type\\":\\"light\\",\\"icon\\":\\"sysApexEngine\\",\\"id\\":\\"CSC-AXE-004-A-38\\",\\"name\\":\\"APEXengine 385 \\",\\"ecos\\":[\\"Lithops\\"],\\"curr\\":' + f'{(driver_maximum_intensity_385/1000):0.2f}' + '}"'
-    meta_660  = 'out-d:meta="{\\"unit\\":\\"A\\",\\"module\\":{\\"driver\\":{\\"configuration\\":[' + f'{number_of_modules_in_serie_660:1d}' + ',1],\\"id\\":\\"MW-XLG-025-XAB\\"},\\"id\\":\\"CSC-AXE-004-A-66\\"},\\"type\\":\\"light\\",\\"icon\\":\\"sysApexEngine\\",\\"id\\":\\"CSC-AXE-004-A-66\\",\\"name\\":\\"APEXengine 660 \\",\\"ecos\\":[\\"Lithops\\"],\\"curr\\":' + f'{(driver_maximum_intensity_660/1000):0.2f}' + '}"'
+    meta_660  = 'out-d:meta="{\\"unit\\":\\"A\\",\\"module\\":{\\"driver\\":{\\"configuration\\":[' + f'{number_of_modules_in_serie_660:1d}' + ',1],\\"id\\":\\"MW-XLG-025-XAB\\"},\\"id\\":\\"CSC-AXE-004-C-66\\"},\\"type\\":\\"light\\",\\"icon\\":\\"sysApexEngine\\",\\"id\\":\\"CSC-AXE-004-C-66\\",\\"name\\":\\"APEXengine 660 \\",\\"ecos\\":[\\"Lithops\\"],\\"curr\\":' + f'{(driver_maximum_intensity_660/1000):0.2f}' + '}"'
 
     schedule_dic = {
         "schedule_3500" : (schedule_3500, "out-a", meta_3500),
@@ -333,11 +334,10 @@ def generate_schedules(debug=False):
         "schedule_660"  : 'DarkRed'
     }
 
+    """
     if debug is True:
-        lml.create_plot(schedule_dic, color_dic, timing=600)
-
-    # Shedules need to be passed as string to the Crescontrol.
-    schedule_dic = lml.stringify_schedules_in_dic(schedule_dic)
+        lml.create_plot(schedule_dic, color_dic, timing=10)
+    """
 
     # --------------------------------------------------------------------------
     # get the json files for the modules
@@ -348,10 +348,10 @@ def generate_schedules(debug=False):
     lit_area = 0.4 #m²
     loss_factor = 0.8 #%
 
-    dli_3500 = loss_factor*6*lml.get_dli_by_m2(schedule_3500, driver_maximum_intensity_3500K, json_3500, lit_area)/1000000
-    dli_5000 = loss_factor*6*lml.get_dli_by_m2(schedule_5000, driver_maximum_intensity_5000K, json_5000, lit_area)/1000000
-    dli_385  = loss_factor*5*lml.get_dli_by_m2(schedule_385,  driver_maximum_intensity_385,   json_385, lit_area) /1000000
-    dli_660  = loss_factor*5*lml.get_dli_by_m2(schedule_660,  driver_maximum_intensity_660,   json_660, lit_area) /1000000
+    dli_3500 = loss_factor*number_of_modules_in_serie_3500K*lml.get_dli_by_m2(schedule_3500, driver_maximum_intensity_3500K, json_3500, lit_area)/1000000
+    dli_5000 = loss_factor*number_of_modules_in_serie_5000K*lml.get_dli_by_m2(schedule_5000, driver_maximum_intensity_5000K, json_5000, lit_area)/1000000
+    dli_385  = loss_factor*number_of_modules_in_serie_385*lml.get_dli_by_m2(schedule_385,  driver_maximum_intensity_385,   json_385, lit_area) /1000000
+    dli_660  = loss_factor*number_of_modules_in_serie_660*lml.get_dli_by_m2(schedule_660,  driver_maximum_intensity_660,   json_660, lit_area) /1000000
 
     dli_details = f'\
 DLI for the schedules calculated based on modules numbers, \n\
@@ -366,6 +366,21 @@ and a loss factor of {((1.0-loss_factor)*100):2.0f}% \n\
 --------------------------------------------------------------------------------\n'
 
     # --------------------------------------------------------------------------
+    # Create a schedules plot and an animated spectrum for the current day
+    if debug is True:
+        schedules_json_driver_dic = {
+            "schedule_3500" : (schedule_3500, json_3500, driver_maximum_intensity_3500K, number_of_modules_in_serie_3500K),
+            "schedule_5000" : (schedule_5000, json_5000, driver_maximum_intensity_5000K, number_of_modules_in_serie_5000K),
+            "schedule_385"  : (schedule_385,  json_385, driver_maximum_intensity_385, number_of_modules_in_serie_385),
+            "schedule_660"  : (schedule_660,  json_660, driver_maximum_intensity_660, number_of_modules_in_serie_660)
+        }
+        lml.create_plot(schedules_json_driver_dic, color_dic, timing=10)
+        #lml.animate_daily_spectrum(schedules_json_driver_dic, save_path="./spectrum_animation.gif")
+
+    # --------------------------------------------------------------------------
+    # Shedules need to be passed as string to the Crescontrol.
+    schedule_dic = lml.stringify_schedules_in_dic(schedule_dic)
+
     # generate a report of schedules generated to be sent by email (or simply printed)
     schedules_dic_list = [schedule_3500_dic, schedule_5000_dic, schedule_385_dic, schedule_660_dic]
     result_for_mail = generate_result_for_email(schedules_dic_list, complementary_text=dli_details)
