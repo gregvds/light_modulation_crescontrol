@@ -9,6 +9,7 @@
 # -- Import for the generation of data_points and communications
 import os
 import sys
+import datetime
 import argparse
 import logging
 import light_modulation_library as lml
@@ -55,12 +56,24 @@ def get_args():
                         "--nomail",
                         action='store_true',
                         help="No report sent by email")
+    parser.add_argument("-d",
+                        "--date",
+                        help="pass a date (YYYY-MM-DD) to the script")
+    parser.add_argument("-j",
+                        "--json",
+                        help="pass a json file to the script with schedules definition.\nThe file must be in the same directory as the script and only the file name must be given, no path no extension")
 
     args = parser.parse_args()
     if args.verbosity is None:
         args.verbosity = 0
     if args.plot is None:
         args.plot = 0
+    if args.date is None:
+        args.date = datetime.date.today()
+    else:
+        args.date = datetime.datetime.strptime(args.date,'%Y-%m-%d')
+    if args.json is not None:
+        args.json = lml.get_json_file(args.json)["schedules"]
     return args
 
 def set_log(verbosity):
@@ -92,7 +105,10 @@ def main():
     logging.info(f'Current day and time of system on {local_ip}: {lml.datetime.datetime.now():%d %b %Y - %H:%M:%S}')
 
     # First we generate all the schedules
-    schedule_dic, result_for_mail = lms.generate_schedules(debug=(args.plot>=1))
+    if args.json is None:
+        schedule_dic, result_for_mail = lms.generate_schedules(args.date, debug=(args.plot>=1))
+    else:
+        schedule_dic, result_for_mail = lms.generate_schedules_new(args.date, args.json, debug=(args.plot>=1))
 
     logging.debug("Produced schedules:")
     for schedule_name, (schedule_string, out_name, meta) in schedule_dic.items():

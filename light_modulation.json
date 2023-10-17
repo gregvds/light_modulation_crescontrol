@@ -1,0 +1,171 @@
+{
+  "schedules": {
+    "schedule_3500_dawn": {
+      "number_of_modules_in_serie": 6,
+      "driver_maximum_intensity": 610,
+      "driver_minimal_voltage_for_light": 0.75,
+      "maximum_intensity_required": 0.82,
+      "transition_duration_minutes": 45,
+      "maximum_voltage_proportion": 1,
+      "mode": "dawn",
+      "length_proportion": 0.23,
+      "shift_proportion": 0.04,
+      "maximum_broadness": 3
+    },
+    "schedule_3500_dusk": {
+      "number_of_modules_in_serie": 6,
+      "driver_maximum_intensity": 610,
+      "driver_minimal_voltage_for_light": 0.75,
+      "maximum_intensity_required": 0.82,
+      "transition_duration_minutes": 45,
+      "maximum_voltage_proportion": 0.95,
+      "mode": "dusk",
+      "length_proportion": 0.25,
+      "shift_proportion": -0.04,
+      "maximum_broadness": 4
+    },
+    "schedule_3500_dawn_dusk" : {
+      "out": "out-a",
+      "json": "fluxengine_3500k",
+      "plot_color": "ivory",
+      "number_of_modules_in_serie": 6,
+      "driver_maximum_intensity": 610,
+      "driver_minimal_voltage_for_light": 0.75,
+      "maximum_intensity_required": 0.82,
+      "transition_duration_minutes": 45,
+      "composed": {
+        "operation": "sum",
+        "list": [
+          "schedule_3500_dawn",
+          "schedule_3500_dusk"
+          ]
+      }
+    },
+    "schedule_3500" : {
+      "name": "schedule_3500",
+      "out": "out-a",
+      "json": "fluxengine_3500k",
+      "driver": "MW-XLG-150-LAB",
+      "module": "CSC-FXE-140-C-35",
+      "module_type": "sysFluxEngine",
+      "eco_module_name": "FXengine 3500K",
+      "plot_color": "ivory",
+      "meta": "",
+      "number_of_modules_in_serie": 6,
+      "driver_maximum_intensity": 610,
+      "driver_minimal_voltage_for_light": 0.75,
+      "maximum_intensity_required": 0.82,
+      "transition_duration_minutes": 45,
+      "composed": {
+        "operation": "sum",
+        "list": [
+          "schedule_3500_dawn",
+          "schedule_3500_dusk"
+        ]
+      }
+    },
+    "schedule_5000_full": {
+      "number_of_modules_in_serie": 6,
+      "driver_maximum_intensity": 1510,
+      "driver_minimal_voltage_for_light": 0.95,
+      "maximum_intensity_required": 0.75,
+      "transition_duration_minutes": 0,
+      "maximum_voltage_proportion": 1,
+      "mode": "centered",
+      "length_proportion": 1.055,
+      "shift_proportion": 0.0,
+      "maximum_broadness": 5
+    },
+    "schedule_5000": {
+      "name": "schedule_5000",
+      "out": "out-b",
+      "json": "fluxengine_5000k",
+      "driver": "MW-XLG-240-MAB",
+      "module": "CSC-FXE-140-C-50",
+      "module_type": "sysFluxEngine",
+      "eco_module_name": "FXengine 5000K",
+      "plot_color": "lightSkyBlue",
+      "meta": "",
+      "number_of_modules_in_serie": 6,
+      "driver_maximum_intensity": 1510,
+      "driver_minimal_voltage_for_light": 0.95,
+      "maximum_intensity_required": 0.75,
+      "transition_duration_minutes": 0,
+      "composed": {
+        "operation": "diff",
+        "list": [
+          "schedule_5000_full",
+          "schedule_3500_dawn_dusk"
+        ]
+      }
+    },
+    "schedule_385": {
+      "name": "schedule_385",
+      "out": "out-c",
+      "json": "apexengine_385",
+      "driver": "MW-LCM-040",
+      "module": "CSC-FXE-140-C-50",
+      "module_type": "sysApexEngine",
+      "eco_module_name": "APEXengine 385 ",
+      "plot_color": "blueviolet",
+      "meta": "CSC-AXE-004-A-38",
+      "number_of_modules_in_serie": 5,
+      "driver_maximum_intensity": 600,
+      "driver_minimal_voltage_for_light": 0.71,
+      "maximum_intensity_required": 0.6,
+      "transition_duration_minutes": 0,
+      "maximum_voltage_proportion": 1,
+      "mode": "centered",
+      "length_proportion": 0.85,
+      "shift_proportion": 0.0,
+      "maximum_broadness": 5
+    },
+    "schedule_660_dawn": {
+      "number_of_modules_in_serie": 5,
+      "driver_maximum_intensity": 600,
+      "driver_minimal_voltage_for_light": 0.71,
+      "maximum_intensity_required": 0.3,
+      "transition_duration_minutes": 60,
+      "maximum_voltage_proportion": 0.8,
+      "mode": "dawn",
+      "length_proportion": 0.1,
+      "shift_proportion": 0.05,
+      "maximum_broadness": 3
+    },
+    "schedule_660_dusk": {
+      "number_of_modules_in_serie": 5,
+      "driver_maximum_intensity": 600,
+      "driver_minimal_voltage_for_light": 0.71,
+      "maximum_intensity_required": 0.3,
+      "transition_duration_minutes": 60,
+      "maximum_voltage_proportion": 1,
+      "mode": "dusk",
+      "length_proportion": 0.15,
+      "shift_proportion": -0.07,
+      "maximum_broadness": 3
+    },
+    "schedule_660": {
+      "name": "schedule_660",
+      "out": "out-d",
+      "json": "apexengine_660",
+      "driver": "MW-XLG-025-XAB",
+      "module": "CSC-AXE-004-C-66",
+      "module_type": "sysApexEngine",
+      "eco_module_name": "APEXengine 660 ",
+      "plot_color": "DarkRed",
+      "meta": "",
+      "number_of_modules_in_serie": 5,
+      "driver_maximum_intensity": 600,
+      "driver_minimal_voltage_for_light": 0.71,
+      "maximum_intensity_required": 0.3,
+      "transition_duration_minutes": 0,
+      "composed": {
+        "operation": "sum",
+        "list": [
+          "schedule_660_dawn",
+          "schedule_660_dusk"
+        ]
+      }
+    }
+  }
+}

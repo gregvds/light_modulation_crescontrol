@@ -99,8 +99,13 @@ def calculate_intensity_2(current_time, earliest_power_on, latest_power_off, amp
     a being (1/(b + e))^(1/4*d)
     b being d/3
     c being b^d
-    d being maximum_broadness
+    d being maximum_broadness (2.5 - 15)
     e being (-2.05/39.0625)*(d-2)*(d-15)
+    All this working to create a broader and broader cosine curve with its feet not moving
+    Maximum_broadness = 2.5 gives almost a triangle curve.
+    Maximum_broadness = 3 gives a normal cosine curve.
+    Values higher broadens the maximum area where intensity = 1.
+    Maximum_broadness = 15 gives almost a square wave.
     """
     # Calculate the current time in hours
     current_hour = convert_datetime_to_decimal_hour(current_time)
@@ -109,16 +114,18 @@ def calculate_intensity_2(current_time, earliest_power_on, latest_power_off, amp
 
     # Calculate the fraction of the day passed
     fraction_of_day = (current_hour - earliest_power_on) / (latest_power_off - earliest_power_on)
-    # Calculate the angle for the cosine curve within the interval from -π/2 to +π/2
-    cosine_angle = math.pi * (fraction_of_day - 0.5)
-    b = maximum_broadness/3.0
-    c = b**maximum_broadness
-    e = (-2.05/39.0625)*(maximum_broadness-2)*(maximum_broadness-15)
-    a = (1/(b + e))**(1/4*maximum_broadness)
     # Calculate a simple intensity using the positive half of the cosine curve
     # from earliest_power_on to latest_power_of
     if 0.0 < fraction_of_day and fraction_of_day < 1.0:
+        # Calculate the angle for the cosine curve within the interval from -π/2 to +π/2
+        cosine_angle = math.pi * (fraction_of_day - 0.5)
+        b = maximum_broadness/3.0
+        c = b**maximum_broadness
+        e = (-2.05/39.0625)*(maximum_broadness-2)*(maximum_broadness-15)
+        a = (1/(b + e))**(1/(4*maximum_broadness))
+        logging.debug(f'angle: {cosine_angle}\nd: {maximum_broadness}\nb: {b}\nc: {c}\ne: {e}\na: {a}')
         intensity = max(0, 1-(math.cos((math.pi/2)*(math.cos(a*cosine_angle)**b))**c))
+        logging.debug(f'Intensity: {intensity}')
     else:
         intensity = 0.0
     return intensity * amplitude_modulation
@@ -252,7 +259,7 @@ def get_modulated_max_intensity(current_date, earliest_power_on, latest_power_of
     logging.debug(f'Modulated maximum intensity: {modulated_max_intensity}')
     return modulated_max_intensity
 
-def calculate_Schedule(current_date, earliest_power_on, latest_power_off, modulated_max_intensity, maximum_broadness=None, transition_duration_minutes=0):
+def calculate_Schedule(current_date, earliest_power_on, latest_power_off, modulated_max_intensity, maximum_broadness=2.5, transition_duration_minutes=0):
     """
     """
     # Calculates all tuples (time_in_second, intensity) for the current day
@@ -264,7 +271,7 @@ def calculate_Schedule(current_date, earliest_power_on, latest_power_off, modula
     iterations          = 0                                             # Counter for iterations
     while iterations < max_iterations:
         intensity=0
-        intensity = calculate_intensity(current_datetime, earliest_power_on, latest_power_off, modulated_max_intensity, maximum_broadness=maximum_broadness, transition_duration_minutes=transition_duration_minutes)
+        intensity = calculate_intensity_2(current_datetime, earliest_power_on, latest_power_off, modulated_max_intensity, maximum_broadness=maximum_broadness, transition_duration_minutes=transition_duration_minutes)
         intensity = max(0,intensity)
         # Calculate time in seconds, starting from midnight of the current day
         time_in_seconds = int((current_datetime - datetime.datetime(current_date.year, current_date.month, current_date.day)).total_seconds())
@@ -276,7 +283,7 @@ def calculate_Schedule(current_date, earliest_power_on, latest_power_off, modula
         iterations += 1
     return data_points_seconds, data_points_hours
 
-def create_intensity_data_suntime(maximum_voltage, mode="centered", length_proportion=1.0, shift_proportion=0.0, date=None, maximum_broadness=4, transition_duration_minutes=0, plot=False):
+def create_intensity_data_suntime(maximum_voltage, mode="centered", length_proportion=1.0, shift_proportion=0.0, date=None, maximum_broadness=3, transition_duration_minutes=0, plot=False):
     """
     Create a list of times and intensities throughout the day (packed in tuples).
     This function uses latitude and longitude to generate earliest_power_on and
@@ -351,7 +358,7 @@ def sum_data_points_seconds(data_points_seconds_1, data_points_seconds_2, min_in
     """
     This function allows to add one schedule to another, assuring the result will
     not pass out of range min/max and that the sum will be conducted timewize.
-    ! Assuming data_points_seconds_1 and padded_data_points_seconds_2 have the same time intervals
+    ! Assuming data_points_seconds_1 and padded_data_points_seconds_2 have the same time intervals and time values
     """
     (padded_data_points_seconds_1,
     padded_data_points_seconds_2) = parallelize_data_points_seconds(data_points_seconds_1,
@@ -767,6 +774,11 @@ def send_schedules_to_crescontrol(schedule_dic):
 
 # --- Other functions ----------------------------------------------------------
 
+def get_json_file(json_name):
+    f = f'./{json_name}.json'
+    records = json.loads(open(f).read())
+    return records
+
 def get_module_json(module_name, refresh_json=False):
     """
     This function download the json for the named module if needed.
@@ -775,9 +787,7 @@ def get_module_json(module_name, refresh_json=False):
         response = requests.get(f'{CS_JSN_URL}{module_name}.json')
         with open(f'./{module_name}.json', mode = 'wb') as file:
             file.write(response.content)
-    f = f'./{module_name}.json'
-    records = json.loads(open(f).read())
-    return records
+    return get_json_file(module_name)
 
 def interpolate_value_for_i(module_json_dic, spec, i_value):
     """
@@ -813,6 +823,11 @@ def get_photon_flux_for_i(module_json_dic, i_value):
     """
     """
     return interpolate_value_for_i(module_json_dic, "I_photon_flux", i_value)
+
+def get_optical_power_for_i(module_json_dic, i_value):
+    """
+    """
+    return interpolate_value_for_i(module_json_dic, "I_optical_power", i_value)
 
 def get_dli_by_m2(data_points_seconds, driver_maximum_intensity, module_json_dic, lit_area, plot=False):
     """
@@ -1111,6 +1126,7 @@ def create_yearly_schedule_3d_plot(maximum_voltage):
 
 def plot_data_on_ax(data_points_seconds, ax, title="", timing=0.01):
     """
+
     """
     (times, intensities) = zip(*data_points_seconds)
     ax.clear()  # Clear the previous plot
@@ -1130,7 +1146,7 @@ def plot_data_on_ax(data_points_seconds, ax, title="", timing=0.01):
     ax.grid(True)
     plt.pause(timing)  # Pause briefly to update the plot
 
-def create_plot(schedule_dic, color_dic, timing=5.0):
+def create_plot(schedule_dic, color_dic, date=None, timing=5.0, save_path=None):
     """
     Function to plot several schedules
     Demo of capability and debug/confirmation of schedules generated
@@ -1141,20 +1157,28 @@ def create_plot(schedule_dic, color_dic, timing=5.0):
     fig.set_facecolor("dimgrey")
     ax.set_facecolor("dimgrey")
     #fig = plt.figure(figsize=(10, 6))
+    sum_intensities = [(0.0,0.0)]
     for label, (schedule, json, driver_maximum_intensity, number_of_modules) in schedule_dic.items():
         photon_schedule = [(time, number_of_modules*get_photon_flux_for_i(json, get_i_from_u_and_maximum_driver_intensity(v_value, driver_maximum_intensity))) for (time, v_value) in schedule]
+        # The simple sum does not work because the time coords are not synchronous.
+        # One does need an interp_sum function here
+        #sum_intensities = sum_data_points_seconds(sum_intensities, photon_schedule, max_intensity=10000.0)
         # Unpack the time and intensity values
         times, intensities = zip(*photon_schedule)
         # Create a plot and add lines
         ax.plot(times, intensities, label=label, marker='o', linestyle='-', color=color_dic[label])
-    current_date        = datetime.date.today()
+    #times, intensities = zip(*sum_intensities)
+    #maximum_intensity = (math.ceil(max(intensities)*10))/10
+    #ax.plot(times, intensities, label='total', marker='o', linestyle='--', color='lightgray')
+
+    current_date        = date if date is not None else datetime.date.today()
     sun                 = Sun(LATITUDE, LONGITUDE)
     sunrise_time_Seconds   = 3600 * convert_datetime_to_decimal_hour(sun.get_sunrise_time(current_date) + datetime.timedelta(seconds=3600*TIMEZONE))
     sunset_time_seconds    = 3600 * convert_datetime_to_decimal_hour(sun.get_sunset_time(current_date) + datetime.timedelta(seconds=3600*TIMEZONE))
-    solstice_sum_sunrise = 3600 * get_summer_solstice_sunrise()
-    solstice_sum_sunset = 3600 * get_summer_solstice_sunset()
-    solstice_win_sunrise = 3600 * get_winter_solstice_sunrise()
-    solstice_win_sunset = 3600 * get_winter_solstice_sunset()
+    solstice_sum_sunrise   = 3600 * get_summer_solstice_sunrise()
+    solstice_sum_sunset    = 3600 * get_summer_solstice_sunset()
+    solstice_win_sunrise   = 3600 * get_winter_solstice_sunrise()
+    solstice_win_sunset    = 3600 * get_winter_solstice_sunset()
 
     sunrise_sunset_ys = (0, maximum_intensity)
     ax.plot((solstice_sum_sunrise, solstice_sum_sunrise), sunrise_sunset_ys, label='Summer Solstice Sunrise', linestyle=':', color='gold')
@@ -1196,11 +1220,10 @@ def create_plot(schedule_dic, color_dic, timing=5.0):
     # Set labels and title
     ax.set_xlabel('Time (seconds)')
     ax.set_ylabel('Photon intensity')
-    ax.set_title('Intensity Comparison')
+    ax.set_title(f'Intensity Comparison - {current_date:%d %b %Y}')
     ax.grid(True)
     # Add a legend
     legend = ax.legend()
-    fig.savefig('./schedules.png')
     # Create an animation to update the vertical line every 10 seconds
     ani = animation.FuncAnimation(fig, update_vertical_line, fargs=(current_time_line, ax, legend),
                                   interval=10, blit=True, cache_frame_data=False)
@@ -1215,23 +1238,31 @@ def create_plot(schedule_dic, color_dic, timing=5.0):
     top_ax.spines['top'].set_position(('outward', 0))
     top_ax.set_xlabel('Time (hours)')
 
+    if save_path:
+        fig.savefig(save_path)
+
     plt.show()
 
     #plt.pause(timing)
     #plt.close(fig=fig)
 
-def animate_daily_spectrum(schedule_dic, time_step=300, save_path=None):
+def animate_daily_spectrum(schedule_dic, time_step=60, save_path=None):
     """
-
+    This function plots a spectrum diagram animated by the schedules defined for a day.
+    if a save_path is received, it saves an mp4 video of it.
+    A complete cumulated spectrum is plotted, along with two more lines to discriminate
+    the contribution of the two first schedules.
+    This function is currently tailored to receive 4 schedules, for FLUXengines 3500K, 5000k, APEXengines 385nm and 660nm.
+    It plots vertical lines for 385 and 660nm. This should be adapted for other modules list.
     """
     schedules = [[schedule, get_photon_spectrum(json), maximum_driver_intensity, number_of_modules, json] for schedule_name, (schedule, json, maximum_driver_intensity, number_of_modules) in schedule_dic.items()]
 
     # Define the time range of the day in seconds
-    start_time = 0
-    end_time = 86400
+    start_time = 21600
+    end_time   = 79200
 
     # Defines the maximum of intensity for the spectrum
-    max_intensity = 5000
+    max_intensity = 1000
 
     # Create a figure and axis for the plot
     fig, ax = plt.subplots(figsize=(10, 6))
@@ -1300,20 +1331,31 @@ def animate_daily_spectrum(schedule_dic, time_step=300, save_path=None):
     X,Y = np.meshgrid(wavelengths, y)
     extent=(np.min(wavelengths), np.max(wavelengths), np.min(y), np.max(y))
 
-
     # Function to update the plot for each time of the day
     def update_plot(time_in_seconds):
         ax.clear()
-        spectra_list = []
+        spectra_list                       = []
+        spectra_list_no_660_no_385         = []
+        spectra_list_no_660_no_385_no_5000 = []
         for i in range(len(schedules)):
-            intensity = get_i_from_schedule(schedules[i][0], time_in_seconds, schedules[i][2])
-            photon_flux_for_i = get_photon_flux_for_i(schedules[i][4], intensity)
-            spectra_list.append(get_spectrum_for_modules(schedules[i][1],photon_flux_for_i, schedules[i][3]))
-        spectra_sum = get_spectra_sum(spectra_list)
-        wavelength, intensity = zip(*spectra_sum)
+            intensity = get_i_from_schedule(schedules[i][0], time_in_seconds, schedules[i][2])  # intensity in Amper
+            optical_power_for_i = get_optical_power_for_i(schedules[i][4], intensity)
+            spectra_list.append(get_spectrum_for_modules(schedules[i][1], optical_power_for_i, schedules[i][3]))
+            if i < 2:
+                spectra_list_no_660_no_385.append(get_spectrum_for_modules(schedules[i][1],optical_power_for_i, schedules[i][3]))
+                if i < 1:
+                    spectra_list_no_660_no_385_no_5000.append(get_spectrum_for_modules(schedules[i][1],optical_power_for_i, schedules[i][3]))
+        spectra_sum                       = get_spectra_sum(spectra_list)
+        spectra_sum_no_660_no_385         = get_spectra_sum(spectra_list_no_660_no_385)
+        spectra_sum_no_660_no_385_no_5000 = get_spectra_sum(spectra_list_no_660_no_385_no_5000)
+        wavelength, intensity                                             = zip(*spectra_sum)
+        wavelength_no_660_no_385, intensity_no_660_no_385                 = zip(*spectra_sum_no_660_no_385)
+        wavelength_no_660_no_385_no_5000, intensity_no_660_no_385_no_5000 = zip(*spectra_sum_no_660_no_385_no_5000)
 
         # Plot spectrum
         ax.plot(wavelength, intensity, linestyle='-', color='darkgray')
+        ax.plot(wavelength_no_660_no_385, intensity_no_660_no_385, linestyle=':', linewidth=1, color='darkgray')
+        ax.plot(wavelength_no_660_no_385_no_5000, intensity_no_660_no_385_no_5000, linestyle='--', linewidth=1.25, color='darkgray')
 
         # show color spectrum below spectrum
         plt.imshow(X, clim=clim,  extent=extent, cmap=spectralmap, aspect='auto')
@@ -1321,18 +1363,22 @@ def animate_daily_spectrum(schedule_dic, time_step=300, save_path=None):
         # Hides color spectrum above spectrum
         ax.fill_between(wavelength, intensity, max_intensity, color='w')
 
+        ax.plot((385, 385), (0.0, max_intensity), linestyle='--', linewidth=1, color='lightgray')
+        ax.plot((660, 660), (0.0, max_intensity), linestyle='--', linewidth=1, color='lightgray')
+
         ax.set_xlim(clim[0],clim[1])
         ax.set_ylim(0.0, max_intensity)
         ax.set_xlabel('Wavelength (nm)')
-        ax.set_ylabel('Intensity')
+        ax.set_ylabel('Intensity (µmol/s.nm)')
         ax.set_title(f'Spectrum Intensity - {convert_seconds_to_human_hour(time_in_seconds)}')
         ax.grid(True)
 
     # Create the animation
     anim = animation.FuncAnimation(fig, update_plot, frames=range(start_time, end_time+1, time_step), interval=100, cache_frame_data=False, repeat=False)
     if save_path:
-        anim.save(save_path, writer='pillow', fps=10)  # Save the animation to a file
-    plt.show()  # Display the animated plot
+        anim.save(save_path, writer='ffmpeg', fps=10)  # Save the animation to a file
+    # Display the animated plot
+    plt.show()
 
 
 # ------------------------------------------------------------------------------
