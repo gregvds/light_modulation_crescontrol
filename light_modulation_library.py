@@ -42,6 +42,8 @@ from email.mime.text import MIMEText
 # -- Imports CONSTANTS from local settings. Be sure to complete them!
 from light_modulation_settings import *
 
+ws = None
+
 # ------------------------------------------------------------------------------
 # -- Core functions ------------------------------------------------------------
 
@@ -533,7 +535,7 @@ def convert_data_points_to_string(data_points_seconds, decimal_places=2, minimum
     Function to output proper string from data_points_seconds
     """
     # Create a string representation with brackets
-    data_string = "[" + ",".join([f"[{(time):.{decimal_places}f},{min(max(minimum_intensity,intensity),maximum_intensity):.{decimal_places}f}]" for time, intensity in data_points_seconds]) + "]"
+    data_string = "[" + ",".join([f"[{(int(time)):.{decimal_places}f},{min(max(minimum_intensity,intensity),maximum_intensity):.{decimal_places}f}]" for time, intensity in data_points_seconds]) + "]"
     return data_string
 
 def stringify_schedules_in_dic(schedule_dic):
@@ -575,6 +577,20 @@ def clean_up_crescontrol_response(response):
     """
     return response.split("::")[1].replace('"',' ').replace('{','').replace('}','')
 
+def open_ws():
+    """
+    """
+    global ws
+    if ws is None:
+        ws = websocket.create_connection(f'ws://{CRESCONTROL_IP}:81',timeout=1000)
+
+def close_ws():
+    """
+    """
+    global ws
+    if ws is not None:
+        ws.close()
+
 def execute_command(query, clean_answer=True):
     """
     sends a query to CresControl through websockets,
@@ -582,15 +598,23 @@ def execute_command(query, clean_answer=True):
     measure the delay it took between send and receive
     and return cleaned response and delay
     """
+    global ws
     start = time.time()
-    ws = websocket.create_connection(f'ws://{CRESCONTROL_IP}:81',timeout=1000)
+    if ws is None:
+        print('ws None, creating it')
+        open_ws()
+    print(f'ws opened in {time.time() - start}s')
+    #ws = websocket.create_connection(f'ws://{CRESCONTROL_IP}:81',timeout=1000)
     ws.send(query)
+    print(f'ws.send(query) in {time.time() - start}s')
     response=ws.recv()
-    ws.close()
+    print(f'response=ws.recv() in {time.time() - start}s')
+    #ws.close()
     end = time.time()
     time_taken = end - start
     if clean_answer:
         response = clean_up_crescontrol_response(response)
+        print(f'clean up of CC response in {time.time() - start}s')
     return response, time_taken
 
 def execute_command_and_report(query, clean_answer=True):
@@ -629,6 +653,12 @@ def set_crescontrol_timezone(timezone):
     logging.info(f'Set CresControl set timezone = {timezone}:')
     response = execute_command_and_report(f'time:timezone={timezone}')
     return response
+
+def set_crescontrol_access_point_key():
+    """
+    """
+    logging.info('Setting crescontrol access point wifi key:')
+    output = execute_command_and_report(f'wifi:access-point:key={CRESCONTROL_ACCESS_POINT_KEY}')
 
 def get_crescontrol_led_verbosity():
     """
@@ -672,17 +702,48 @@ def set_crescontrol_websocket_remote_allow_connection(value):
         logging.error(f'Faulty value. Must be 0 or 1')
         return f'Faulty value. Must be 0 or 1'
 
-def create_schedule_if_not_exists(schedule_name):
+def wait_for_cc_frequency_recovery(minimum_frequency=400, minimum_time=10):
     """
-    This function creates a schedule with the given name
+    This function waits until the crescontrol frequency has recovered to a decent value
     """
     status = False
-    logging.info(f'Creating schedule {schedule_name} if not existant:')
+    while not status:
+        output = float(execute_command_and_report('system:frequency'))
+        logging.debug(f'Crescontrol frequency: {output}Hz.')
+        status = (output >= minimum_frequency)
+        time.sleep(minimum_time/3)
+        output = float(execute_command_and_report('system:frequency'))
+        logging.debug(f'Crescontrol frequency: {output}Hz.')
+        status = status and (output >= minimum_frequency)
+        time.sleep(minimum_time/3)
+        output = float(execute_command_and_report('system:frequency'))
+        logging.debug(f'Crescontrol frequency: {output}Hz.')
+        status = status and (output >= minimum_frequency)
+        time.sleep(minimum_time/3)
+
+def create_schedule_if_not_exists(schedule_name, keep_existing_schedule=False):
+    """
+    This function creates a schedule with the given name.
+    If this one already exists, it removes it first or not as asked.
+    """
+    status = False
+    if not keep_existing_schedule:
+        logging.info(f'Creating schedule {schedule_name} if not existant, else recreating it:')
+    else:
+        logging.info(f'Creating schedule {schedule_name} if not existant, else does nothing:')
     # Check if schedule exists already, if not, creates it.
     output = execute_command_and_report(f'schedule:get-name("{schedule_name}")')
     if ' error : a schedule with this name does not exist ' not in output:
-        logging.info(f'Schedule {schedule_name} already exists :-).')
-        return True
+        logging.info(f'Schedule {schedule_name} already exists.')
+        if not keep_existing_schedule:
+            status = remove_schedule(schedule_name)
+            if status:
+                return create_schedule_if_not_exists(schedule_name)
+            else:
+                logging.error(f'Impossible to remove schedule {schedule_name} :-(.')
+                return status
+        else:
+            return True
     else:
         logging.info(f'Creating schedule {schedule_name} :-).')
         output = execute_command_and_report(f'schedule:add("{schedule_name}")')
@@ -693,6 +754,68 @@ def create_schedule_if_not_exists(schedule_name):
         else:
             logging.error(f'Failed to create {schedule_name} :-(.')
         return status
+
+def remove_schedule(schedule_name):
+    """
+    This function removes a schedule if it exists
+    """
+    status = False
+    logging.info(f'Removing schedule {schedule_name}:')
+    # Check if schedule exists already, if so removes it.
+    output = execute_command_and_report(f'schedule:get-name("{schedule_name}")')
+    status = ' error : a schedule with this name does not exist ' in output
+    if not status:
+        output = execute_command_and_report(f'schedule:remove("{schedule_name}")')
+        status = ('success' in output)
+        if status:
+            logging.info(f'{schedule_name} successfully removed :-).')
+        else:
+            logging.error(f'Failed to remove {schedule_name} :-(.')
+    else:
+        logging.info(f'{schedule_name} does not exist, nothing removed.')
+    return status
+
+def disable_schedule(schedule_name):
+    """
+    This function disable a schedule if enabled.
+    """
+    status = False
+    logging.info(f'Disabling schedule {schedule_name} if enabled:')
+    output = execute_command_and_report(f'schedule:get-enabled("{schedule_name}")')
+    if '1' in output:
+        output = execute_command_and_report(f'schedule:set-enabled("{schedule_name}",0)')
+        status = ('success' in output)
+        if not status:
+            logging.warning(f'Schedule {schedule_name} encountered a problem during its disabling: {output}, passing it.')
+        else:
+            logging.info(f'{schedule_name} disabled :-)!')
+    elif '0' in output:
+        status = True
+        logging.info(f'{schedule_name} disabled :-)!')
+    else:
+        logging.warning(f'Schedule {schedule_name} encountered a problem during its disabling: {output}, passing it.')
+    return status
+
+def enable_schedule(schedule_name):
+    """
+    This function enable a schedule if disabled.
+    """
+    status = False
+    logging.info(f'Enabling schedule {schedule_name} if disabled:')
+    output = execute_command_and_report(f'schedule:get-enabled("{schedule_name}")')
+    if '0' in output:
+        output = execute_command_and_report(f'schedule:set-enabled("{schedule_name}",1)')
+        status = ('success' in output)
+        if not status:
+            logging.warning(f'Schedule {schedule_name} encountered a problem during its enabling: {output}, passing it.')
+        else:
+            logging.info(f'{schedule_name} enabled :-)!')
+    elif '1' in output:
+        status = True
+        logging.info(f'{schedule_name} enabled :-)!')
+    else:
+        logging.warning(f'Schedule {schedule_name} encountered a problem during its enabling: {output}, passing it.')
+    return status
 
 def send_schedules_to_crescontrol(schedule_dic):
     """
@@ -709,15 +832,12 @@ def send_schedules_to_crescontrol(schedule_dic):
         if not status:
             logging.warning(f'Schedule {schedule_name} encountered a problem during its creation or search, passing it.')
             continue
-        logging.info(f'Schedule {schedule_name} created or existing already :-).')
 
-        output = execute_command_and_report(f'schedule:set-enabled("{schedule_name}",0)')
-        status = ('success' in output)
+        status = disable_schedule(schedule_name)
         global_status = global_status and status
         if not status:
             logging.warning(f'Schedule {schedule_name} encountered a problem during its disabling, passing it.')
             continue
-        logging.info(f'Schedule {schedule_name} disabled :-).')
 
         output = execute_command_and_report(f'schedule:set-parameter("{schedule_name}","{out_port}:voltage")')
         status = ('success' in output)
@@ -735,7 +855,7 @@ def send_schedules_to_crescontrol(schedule_dic):
             continue
         logging.info(f'Schedule {schedule_name} schedule updated :-).')
 
-        res = '0.05,0.02'
+        res = '1.00,0.02'
         output = execute_command_and_report(f'schedule:set-resolution("{schedule_name}",{res})')
         status = (res in output)
         global_status = global_status and status
@@ -754,12 +874,10 @@ def send_schedules_to_crescontrol(schedule_dic):
         logging.info(f'Schedule {schedule_name} meta set :-).')
         """
 
-        output = execute_command_and_report(f'schedule:set-enabled("{schedule_name}",1)')
-        global_status = global_status and ('success' in output)
+        status = enable_schedule(schedule_name)
+        global_status = global_status and status
         if not status:
-            logging.warning(f'Schedule {schedule_name} encountered a problem during its enabling, passing it.')
             continue
-        logging.info(f'Schedule {schedule_name} enabled :-).')
 
         output = execute_command_and_report(f'schedule:save("{schedule_name}")')
         global_status = global_status and ('success' in output)
@@ -768,7 +886,7 @@ def send_schedules_to_crescontrol(schedule_dic):
             continue
         logging.info(f'Schedule {schedule_name} saved :-).\n')
 
-        time.sleep(PAUSE_BETWEEN_QUERIES)
+        wait_for_cc_frequency_recovery(minimum_time=10)
     return global_status
 
 
@@ -944,6 +1062,7 @@ def send_mail(email_message):
     email_message['From'] = SENDER_EMAIL
     email_message['Reply-to'] = SENDER_EMAIL
     email_message['To'] = RECEIVER_EMAIL
+    logging.debug(f'Message to be mailed:\n{email_message}\n')
     # Connect to the SMTP server and send the email
     with smtplib.SMTP(SMTP_SERVER, 587) as server:  # Replace with your SMTP server details
         server.starttls()
@@ -1240,11 +1359,8 @@ def create_plot(schedule_dic, color_dic, date=None, timing=5.0, save_path=None):
 
     if save_path:
         fig.savefig(save_path)
-
     plt.show()
 
-    #plt.pause(timing)
-    #plt.close(fig=fig)
 
 def animate_daily_spectrum(schedule_dic, time_step=60, save_path=None):
     """

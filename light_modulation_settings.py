@@ -22,6 +22,7 @@ RPI_IP = ""                                     # IP of the Raspberry pi executi
 CRESCONTROL_IP = ""                             # IP of the CresControl where schedule are to be sent
 CRESCONTROL_URL = f'http://{CRESCONTROL_IP}'
 CRESCONTROL_CPU_ID = ''                         # curl http://CRESCONTROL_IP/commands?query=\"system:cpu-id\"
+CRESCONTROL_ACCESS_POINT_KEY = ""
 PAUSE_BETWEEN_QUERIES = 10                      # seconds, this to allow the CC pile to be treated in case of large query
 
 # Cre.Science json database url

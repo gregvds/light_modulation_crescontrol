@@ -62,21 +62,36 @@ if __name__ == "__main__":
     out_d_voltage_single_push = 0
     out_all_voltage_double_push = 0
     commands = (
+        'script:remove("observation_light_toggle")',
         'script:remove("observation_light")',
         'script:add("observation_light")',
         f'script:set-start-script("observation_light","schedule:set-enabled(\\"schedule_3500\\",0);schedule:set-enabled(\\"schedule_5000\\",0);schedule:set-enabled(\\"schedule_385\\",0);schedule:set-enabled(\\"schedule_660\\",0);out-a:voltage={out_a_voltage_single_push};out-b:voltage={out_b_voltage_single_push};out-c:voltage={out_c_voltage_single_push};out-d:voltage={out_d_voltage_single_push}")',
         'script:set-stop-script("observation_light","schedule:set-enabled(\\"schedule_3500\\",1);schedule:set-enabled(\\"schedule_5000\\",1);schedule:set-enabled(\\"schedule_385\\",1);schedule:set-enabled(\\"schedule_660\\",1)")',
         'script:save("observation_light")',
-        'user-button:single-press-command="if(script:get-running(\\"observation_light\\"),\\"script:stop(\\\\"observation_light\\\\")\\",\\"script:start(\\\\"observation_light\\\\")\\")"',
+        #
+        'script:add("observation_light_toggle")',
+        'script:set-start-script("observation_light_toggle","if(script:get-running(\\"observation_light\\"),\\"script:stop(\\\\"observation_light\\\\")\\",\\"script:start(\\\\"observation_light\\\\")\\")")',
+        'script:save("observation_light_toggle")',
+        #
+        'user-button:single-press-command="script:start(\\"observation_light_toggle\\")"',
+        #
+        'script:remove("light_off_toggle")',
         'script:remove("light_off")',
         'script:add("light_off")',
         f'script:set-start-script("light_off","schedule:set-enabled(\\"schedule_3500\\",0);schedule:set-enabled(\\"schedule_5000\\",0);schedule:set-enabled(\\"schedule_385\\",0);schedule:set-enabled(\\"schedule_660\\",0);out-a:voltage={out_all_voltage_double_push};out-b:voltage={out_all_voltage_double_push};out-c:voltage={out_all_voltage_double_push};out-d:voltage={out_all_voltage_double_push}")',
         'script:set-stop-script("light_off","schedule:set-enabled(\\"schedule_3500\\",1);schedule:set-enabled(\\"schedule_5000\\",1);schedule:set-enabled(\\"schedule_385\\",1);schedule:set-enabled(\\"schedule_660\\",1)")',
         'script:save("light_off")',
-        'user-button:double-press-command="if(script:get-running(\\"light_off\\"),\\"script:stop(\\\\"light_off\\\\")\\",\\"script:start(\\\\"light_off\\\\")\\")"',
+        #
+        'script:add("light_off_toggle")',
+        'script:set-start-script("light_off_toggle","if(script:get-running(\\"light_off\\"),\\"script:stop(\\\\"light_off\\\\")\\",\\"script:start(\\\\"light_off\\\\")\\")")',
+        'script:save("light_off_toggle")',
+        #
+        'user-button:double-press-command="script:start(\\"light_off_toggle\\")"',
+        #
         'user-button:double-press-delay=1000',
         'system:save()'
     )
+
     for command in commands:
         response, time_taken = lml.execute_command(command, clean_answer=False)
         logging.info(response)

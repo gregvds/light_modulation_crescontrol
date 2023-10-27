@@ -24,23 +24,6 @@
       "shift_proportion": -0.04,
       "maximum_broadness": 4
     },
-    "schedule_3500_dawn_dusk" : {
-      "out": "out-a",
-      "json": "fluxengine_3500k",
-      "plot_color": "ivory",
-      "number_of_modules_in_serie": 6,
-      "driver_maximum_intensity": 610,
-      "driver_minimal_voltage_for_light": 0.75,
-      "maximum_intensity_required": 0.82,
-      "transition_duration_minutes": 45,
-      "composed": {
-        "operation": "sum",
-        "list": [
-          "schedule_3500_dawn",
-          "schedule_3500_dusk"
-          ]
-      }
-    },
     "schedule_3500" : {
       "name": "schedule_3500",
       "out": "out-a",
@@ -95,7 +78,7 @@
         "operation": "diff",
         "list": [
           "schedule_5000_full",
-          "schedule_3500_dawn_dusk"
+          "schedule_3500"
         ]
       }
     },

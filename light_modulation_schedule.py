@@ -289,7 +289,23 @@ def generate_schedule(date, schedules_dic, schedule_name, debug=False):
     """
     """
     schedule_dic = schedules_dic[schedule_name]
-    maximum_voltage = 10 * (schedule_dic["maximum_intensity_required"]) * schedule_dic["maximum_voltage_proportion"]
+    if "composed" in schedule_dic.keys():
+        print(f'Composed...')
+        # if the schedule is a composition of schedules
+        schedule = generate_composed_schedule(date, schedules_dic, schedule_name, debug=debug)
+        print(f'Composed {schedule_name} finished')
+    else:
+        print(f'Simple...')
+        # We generate a simple schedule
+        schedule = generate_simple_schedule(date, schedules_dic, schedule_name, debug=debug)
+        print(f'Simple {schedule_name} finished')
+    return schedule
+
+def generate_simple_schedule(date, schedules_dic, schedule_name, debug=False):
+    """
+    """
+    schedule_dic = schedules_dic[schedule_name]
+    maximum_voltage = 10 * schedule_dic["maximum_intensity_required"] * schedule_dic["maximum_voltage_proportion"]
 
     (data_points_seconds,
     junk,
@@ -316,8 +332,45 @@ def generate_schedule(date, schedules_dic, schedule_name, debug=False):
     }
     return schedule_dic
 
+def generate_composed_schedule(date, schedules_dic, schedule_name, debug=False):
+    """
+    """
+    schedule_dic = schedules_dic[schedule_name]
+    schedules = []
+    ponderation_factors = []
+    for schedule_name_in_list in schedule_dic["composed"]["list"]:
+        # recursive call to generate the schedules required to compose the schedule
+        #if isinstance(schedule_name_in_list, dict):
+
+        schedules.append(generate_schedules_new(date, schedules_dic, schedule_name=schedule_name_in_list, debug=debug))
+        ponderation_factors.append(schedules_dic[schedule_name_in_list]["maximum_intensity_required"] * schedules_dic[schedule_name_in_list]["driver_maximum_intensity"])
+    if schedule_dic["composed"]["operation"] == "sum":
+        # A sum should be done between two schedules with the same modules/drivers characteristics.
+        # If not, the second schedule should be scaled accordingly (NOT THE CASE CURRENTLY, see next elif for implementation)
+        full_schedule = lml.sum_data_points_seconds(schedules[0]['full_schedule'], schedules[1]['full_schedule'])
+    elif schedule_dic["composed"]["operation"] == "diff":
+        # A substraction is usually conducted to retract from one schedule the light
+        # produced by another, not of the same modules/drivers characteristics.
+        # Hence the scaling of the second by the ratio of the maximum_intensity_required of each schedule.
+        full_schedule = lml.substract_data_points_seconds(schedules[0]['full_schedule'], lml.scale_data_points_seconds(schedules[1]['full_schedule'], ponderation_factors[1]/ponderation_factors[0]))
+    schedule_dic = {
+        'schedule_name': schedule_name,
+        'full_schedule': full_schedule,
+        'earliest_power_on': lml.get_equinox_sunrise(),
+        'daily_earliest_power_on': min(schedules[0]['daily_earliest_power_on'], schedules[1]['daily_earliest_power_on']),
+        'latest_power_off': lml.get_equinox_sunset(),
+        'daily_latest_power_off': max(schedules[0]['daily_latest_power_off'], schedules[1]['daily_latest_power_off']),
+        'transition_duration_minutes': max(schedules[0]['transition_duration_minutes'], schedules[1]['transition_duration_minutes']),
+        'maximum_voltage': schedules[0]['maximum_voltage'],
+        'daily_maximum_intensity': schedules[0]['daily_maximum_intensity']
+    }
+    return schedule_dic
+
 def generate_schedules_new(date, schedules_dic, schedule_name=None, debug=False):
     """
+    This function generates all the schedules defined in the schedules dictionary.
+    This dictionary is imported from a json file where all the parameters are kept.
+    See light_modulation.json for more details.
     """
     out_schedule_dic = {}
     color_dic = {}
@@ -329,60 +382,33 @@ def generate_schedules_new(date, schedules_dic, schedule_name=None, debug=False)
     # This should be the case during the first and general call. The function is
     # called recursively with a schedule_name defined.
     if schedule_name is None:
+        print(f'0- Schedule_name is None')
         for schedule_name, schedule_dic in schedules_dic.items():
             if "name" in schedule_dic.keys():
+                print(f'0- Name in schedule_dic: {schedule_name}')
                 schedules_dic_to_treat[schedule_name] = schedules_dic[schedule_name]
     else:
+        print(f'1- Schedule_name: {schedule_name}')
         schedules_dic_to_treat[schedule_name] = schedules_dic[schedule_name]
 
     # We treat all (or only one) schedules
     schedule = {}
     schedule_out = []
     for name, schedule_dic in schedules_dic_to_treat.items():
-        # if the schedule is a composition of schedules
-        if "composed" in schedule_dic.keys():
-            schedules = []
-            ponderation_factors = []
-            for schedule_name_in_list in schedule_dic["composed"]["list"]:
-                # recursive call to generate the schedules required to compose the schedule
-                schedules.append(generate_schedules_new(date, schedules_dic, schedule_name=schedule_name_in_list, debug=debug))
-                ponderation_factors.append(schedules_dic[schedule_name_in_list]["maximum_intensity_required"] * schedules_dic[schedule_name_in_list]["driver_maximum_intensity"])
-            if schedule_dic["composed"]["operation"] == "sum":
-                full_schedule = lml.sum_data_points_seconds(schedules[0]['full_schedule'], schedules[1]['full_schedule'])
-            elif schedule_dic["composed"]["operation"] == "diff":
-                full_schedule = lml.substract_data_points_seconds(schedules[0]['full_schedule'], lml.scale_data_points_seconds(schedules[1]['full_schedule'], ponderation_factors[1]/ponderation_factors[0]))
-            schedule = {
-                'schedule_name': name,
-                'full_schedule': full_schedule,
-                'earliest_power_on': lml.get_equinox_sunrise(),
-                'daily_earliest_power_on': min(schedules[0]['daily_earliest_power_on'], schedules[1]['daily_earliest_power_on']),
-                'latest_power_off': lml.get_equinox_sunset(),
-                'daily_latest_power_off': max(schedules[0]['daily_latest_power_off'], schedules[1]['daily_latest_power_off']),
-                'transition_duration_minutes': max(schedules[0]['transition_duration_minutes'], schedules[1]['transition_duration_minutes']),
-                'maximum_voltage': schedules[0]['maximum_voltage'],
-                'daily_maximum_intensity': schedules[0]['daily_maximum_intensity']
-            }
-            if "name" not in schedule_dic.keys():
-                # the composed schedule is to be used to calculate another schedule
-                return schedule
-            else:
-                # the composed schedule is a final one to output
-                schedule_out = lml.clean_and_simplify_to_desired_points(lml.gate_data_points_seconds(schedule['full_schedule'], lower_gate=schedule_dic["driver_minimal_voltage_for_light"], plot=PLOT), plot=PLOT)
-                out_schedule_dic[name] = (schedule_out, schedule_dic["out"], schedule_dic["meta"])
+        print(f'Name to treat: {name}')
+        schedule = generate_schedule(date, schedules_dic, name, debug=debug)
+        if (schedule_name is not None) and len(schedules_dic_to_treat.keys()) == 1:
+            print(f'{schedule_name}, Schedule_name is not None: {schedule_name is not None}')
+            # the simple schedule is to be used to calculate another schedule
+            # return from a recursive call
+            return schedule
         else:
-            # We generate a simple schedule
-            schedule = generate_schedule(date, schedules_dic, name, debug=debug)
-            if "name" not in schedule_dic.keys():
-                # the simple schedule is to be used to calculate another schedule
-                return schedule
-            else:
-                # the simple schedule is a final one to output
-                schedule_out = lml.clean_and_simplify_to_desired_points(lml.gate_data_points_seconds(schedule['full_schedule'], lower_gate=schedule_dic["driver_minimal_voltage_for_light"], plot=PLOT), plot=PLOT)
-                out_schedule_dic[name] = (schedule_out, schedule_dic["out"], schedule_dic["meta"])
-        # generation of meta for schedules to output
-        meta = generate_meta(schedule_dic)
+            print(f'Schedule_name is not None: {schedule_name is not None}')
+            # the simple schedule is a final one to output
+            schedule_out = lml.clean_and_simplify_to_desired_points(lml.gate_data_points_seconds(schedule['full_schedule'], lower_gate=schedule_dic["driver_minimal_voltage_for_light"], plot=PLOT), plot=PLOT)
+            out_schedule_dic[name] = (schedule_out, schedule_dic["out"], schedule_dic["meta"])
         # keep schedules and details in structures for output
-        out_schedule_dic[name] = (schedule_out, schedule_dic["out"], meta)
+        out_schedule_dic[name] = (schedule_out, schedule_dic["out"], generate_meta(schedule_dic))
         # for plots
         color_dic[name] = schedule_dic["plot_color"]
         schedules_json_driver_dic[name] = (schedule_out, lml.get_module_json(schedule_dic["json"]), schedule_dic["driver_maximum_intensity"], schedule_dic["number_of_modules_in_serie"])
