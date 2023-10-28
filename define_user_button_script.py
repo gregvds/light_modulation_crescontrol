@@ -6,8 +6,9 @@
 # ------------------------------------------------------------------------------
 # ------------------------------------------------------------------------------
 
-# -- Import for the generation of data_points and communications
-import light_modulation_library as lml
+# -- Imports
+import light_modulation_library_communication as lmlc
+import light_modulation_library_plot as lmlp
 import os
 import sys
 import time
@@ -20,12 +21,12 @@ LOCALDIRN   = '.'
 LOGFILE     = os.path.basename(__file__).replace('py','log')
 
 # -- local constants definitions
-local_ip = lml.get_local_ip()
+local_ip = lmlc.get_local_ip()
 
 def set_log(verbosity):
     """
     """
-    lml.plt.set_loglevel (level = 'warning')
+    lmlp.plt.set_loglevel (level = 'warning')
     level = logging.ERROR
     if verbosity == 1:
         level = logging.WARNING
@@ -93,7 +94,7 @@ if __name__ == "__main__":
     )
 
     for command in commands:
-        response, time_taken = lml.execute_command(command, clean_answer=False)
+        response, time_taken = lmlc.execute_command(command, clean_answer=False)
         logging.info(response)
 
 # ------------------------------------------------------------------------------

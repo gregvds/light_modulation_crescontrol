@@ -4,14 +4,17 @@
 # Author: Gregoire Vandenschrick
 # Date:   20/09/2023
 # ------------------------------------------------------------------------------
-# ------------------------------------------------------------------------------
 
+# ------------------------------------------------------------------------------
 # -- Import for the generation of data_points and communications
-import light_modulation_library as lml
 import os
 import logging
+import light_modulation_library_generation as lmlg
+import light_modulation_library_communication as lmlc
+import light_modulation_library_plot as lmlp
 
 # ------------------------------------------------------------------------------
+# -- local constants definitions.
 
 PLOT = False
 
@@ -33,6 +36,7 @@ PLOT = False
     For easier reading, we encapsulate all this in function generate_schedules().
 """
 
+# - Old methodology ------------------------------------------------------------
 def generate_3500K_schedule(date, schedule_name, driver_maximum_intensity, maximum_intensity_required):
     """
     Generate a curve for 3500k for dawn and dusk by summing two different schedules
@@ -48,7 +52,7 @@ def generate_3500K_schedule(date, schedule_name, driver_maximum_intensity, maxim
     junk,
     daily_earliest_power_on,
     junk,
-    daily_maximum_intensity) = lml.create_intensity_data_suntime(maximum_voltage,
+    daily_maximum_intensity) = lmlg.create_intensity_data_suntime(maximum_voltage,
                                                                  date=date,
                                                                  mode="dawn",
                                                                  length_proportion=0.23,
@@ -60,7 +64,7 @@ def generate_3500K_schedule(date, schedule_name, driver_maximum_intensity, maxim
     # We save back the schedule name and the modulated begin and max intensity
     schedule_3500_dic = {
         'schedule_name': schedule_name,
-        'earliest_power_on': lml.get_equinox_sunrise(),
+        'earliest_power_on': lmlg.get_equinox_sunrise(),
         'daily_earliest_power_on': daily_earliest_power_on,
         'daily_maximum_intensity': daily_maximum_intensity
     }
@@ -70,7 +74,7 @@ def generate_3500K_schedule(date, schedule_name, driver_maximum_intensity, maxim
     junk,
     junk,
     daily_latest_power_off,
-    junk) = lml.create_intensity_data_suntime(maximum_voltage*0.95,
+    junk) = lmlg.create_intensity_data_suntime(maximum_voltage*0.95,
                                               date=date,
                                               mode='dusk',
                                               length_proportion=0.25,
@@ -80,12 +84,12 @@ def generate_3500K_schedule(date, schedule_name, driver_maximum_intensity, maxim
                                               plot=PLOT)
 
     # the two curves for dawn and dusk schedules are added
-    data_points_seconds = lml.sum_data_points_seconds(data_points_seconds_first,
+    data_points_seconds = lmlg.sum_data_points_seconds(data_points_seconds_first,
                                                       data_points_seconds_second)
 
     # We save back the data and the modulated end
     schedule_3500_dic['full_schedule'] = data_points_seconds
-    schedule_3500_dic['latest_power_off'] = lml.get_equinox_sunset()
+    schedule_3500_dic['latest_power_off'] = lmlg.get_equinox_sunset()
     schedule_3500_dic['daily_latest_power_off'] = daily_latest_power_off
     schedule_3500_dic['transition_duration_minutes'] = transition_duration_minutes
     schedule_3500_dic['maximum_voltage'] = maximum_voltage
@@ -104,7 +108,7 @@ def generate_5000K_schedule(date, schedule_name, driver_maximum_intensity, maxim
     junk,
     daily_earliest_power_on,
     daily_latest_power_off,
-    daily_maximum_intensity) = lml.create_intensity_data_suntime(maximum_voltage,
+    daily_maximum_intensity) = lmlg.create_intensity_data_suntime(maximum_voltage,
                                                                  date=date,
                                                                  length_proportion=1.055,
                                                                  shift_proportion=0.0,
@@ -116,9 +120,9 @@ def generate_5000K_schedule(date, schedule_name, driver_maximum_intensity, maxim
     schedule_5000_dic = {
         'schedule_name': schedule_name,
         'full_schedule': data_points_seconds,
-        'earliest_power_on': lml.get_equinox_sunrise(),
+        'earliest_power_on': lmlg.get_equinox_sunrise(),
         'daily_earliest_power_on': daily_earliest_power_on,
-        'latest_power_off': lml.get_equinox_sunset(),
+        'latest_power_off': lmlg.get_equinox_sunset(),
         'daily_latest_power_off': daily_latest_power_off,
         'transition_duration_minutes': transition_duration_minutes,
         'maximum_voltage': maximum_voltage,
@@ -139,7 +143,7 @@ def generate_385_schedule(date, schedule_name, driver_maximum_intensity, maximum
     junk,
     daily_earliest_power_on,
     daily_latest_power_off,
-    daily_maximum_intensity) = lml.create_intensity_data_suntime(maximum_voltage,
+    daily_maximum_intensity) = lmlg.create_intensity_data_suntime(maximum_voltage,
                                                                  date=date,
                                                                  length_proportion=0.85,
                                                                  shift_proportion=0.0,
@@ -151,9 +155,9 @@ def generate_385_schedule(date, schedule_name, driver_maximum_intensity, maximum
     schedule_385_dic = {
         'schedule_name': schedule_name,
         'full_schedule': data_points_seconds,
-        'earliest_power_on': lml.get_equinox_sunrise(),
+        'earliest_power_on': lmlg.get_equinox_sunrise(),
         'daily_earliest_power_on': daily_earliest_power_on,
-        'latest_power_off': lml.get_equinox_sunset(),
+        'latest_power_off': lmlg.get_equinox_sunset(),
         'daily_latest_power_off': daily_latest_power_off,
         'transition_duration_minutes': transition_duration_minutes,
         'maximum_voltage': maximum_voltage,
@@ -176,7 +180,7 @@ def generate_660_schedule(date, schedule_name, driver_maximum_intensity, maximum
     junk,
     daily_earliest_power_on,
     junk,
-    daily_maximum_intensity) = lml.create_intensity_data_suntime(maximum_voltage*0.8,
+    daily_maximum_intensity) = lmlg.create_intensity_data_suntime(maximum_voltage*0.8,
                                                                  date=date,
                                                                  mode="dawn",
                                                                  length_proportion=0.10,
@@ -190,7 +194,7 @@ def generate_660_schedule(date, schedule_name, driver_maximum_intensity, maximum
     junk,
     junk,
     daily_latest_power_off,
-    junk) = lml.create_intensity_data_suntime(maximum_voltage,
+    junk) = lmlg.create_intensity_data_suntime(maximum_voltage,
                                               date=date,
                                               mode='dusk',
                                               length_proportion=0.15,
@@ -200,7 +204,7 @@ def generate_660_schedule(date, schedule_name, driver_maximum_intensity, maximum
                                               plot=PLOT)
 
     # the two curves for dawn and dusk schedules are added
-    data_points_seconds = lml.sum_data_points_seconds(data_points_seconds_first,
+    data_points_seconds = lmlg.sum_data_points_seconds(data_points_seconds_first,
                                                       data_points_seconds_second)
 
 
@@ -208,223 +212,15 @@ def generate_660_schedule(date, schedule_name, driver_maximum_intensity, maximum
     schedule_660_dic = {
         'schedule_name': schedule_name,
         'full_schedule': data_points_seconds,
-        'earliest_power_on': lml.get_equinox_sunrise(),
+        'earliest_power_on': lmlg.get_equinox_sunrise(),
         'daily_earliest_power_on': daily_earliest_power_on,
-        'latest_power_off': lml.get_equinox_sunset(),
+        'latest_power_off': lmlg.get_equinox_sunset(),
         'daily_latest_power_off': daily_latest_power_off,
         'transition_duration_minutes': transition_duration_minutes,
         'maximum_voltage': maximum_voltage,
         'daily_maximum_intensity': daily_maximum_intensity
     }
     return schedule_660_dic
-
-def generate_result_for_email(schedule_dic_list, complementary_text=""):
-    result_for_mail = '\
-Daily report of led lights schedules modulation\n\
---------------------------------------------------------------------------------\n\
-Current day and time on %s: %s\n\
---------------------------------------------------------------------------------\n\
-' % (f'{lml.get_local_ip()}',
-     f'{lml.datetime.datetime.now():%d %b %Y - %H:%M:%S}')
-    for schedule_dic in schedule_dic_list:
-        result_for_mail += '\
-Schedule for %s\n\
-    begin: %s  (time modulation: %s)\n\
-    end:   %s  (time modulation: %s)\n\
-    max:   %sV (int. modulation:  %s%%)\n\n\
-' % (schedule_dic['schedule_name'],
-     "%02dh%02d" % (schedule_dic['daily_earliest_power_on'], (schedule_dic['daily_earliest_power_on']*60)%60),
-     lml.format_time_modulation_delta(schedule_dic['daily_earliest_power_on'], schedule_dic['earliest_power_on'], "%02dh%02dm"),
-     "%02dh%02d" % (schedule_dic['daily_latest_power_off'], (schedule_dic['daily_latest_power_off']*60)%60),
-     lml.format_time_modulation_delta(schedule_dic['daily_latest_power_off'], schedule_dic['latest_power_off'], "%02dh%02dm"),
-     "%05.2f" % (schedule_dic['maximum_voltage']*schedule_dic['daily_maximum_intensity']),
-     "%02.2f" % ((schedule_dic['daily_maximum_intensity'])*100.0))
-    result_for_mail += '\
---------------------------------------------------------------------------------\n'
-    result_for_mail += complementary_text
-    return result_for_mail
-
-def generate_dli_details(schedules_dic_to_treat, out_schedule_dic):
-    """
-    """
-    lit_area = 0.4 #m²
-    loss_factor = 0.8 #%
-    total_dli = 0
-    dli_details = f'\
-DLI for the schedules calculated based on modules numbers, \n\
-characteristics and driver settings for a lit area of {lit_area}m² \n\
-and a loss factor of {((1.0-loss_factor)*100):2.0f}% \n\
---------------------------------------------------------------------------------\n'
-
-    for schedule_name, schedule_dic in schedules_dic_to_treat.items():
-        # get the json files for the modules
-        json = lml.get_module_json(schedule_dic["json"])
-        number_of_modules_in_serie = schedule_dic["number_of_modules_in_serie"]
-        schedule = out_schedule_dic[schedule_name][0]
-        driver_maximum_intensity = schedule_dic["driver_maximum_intensity"]
-        dli = loss_factor*number_of_modules_in_serie*lml.get_dli_by_m2(schedule, driver_maximum_intensity, json, lit_area)/1000000
-        total_dli += dli
-        dli_details += f'\
-{dli:6.3f} mol/m²/day of photon delivered by {number_of_modules_in_serie} {schedule_dic["json"]} on a driver set at {driver_maximum_intensity:4.0f}mA.\n'
-    dli_details += f'\
-{total_dli:6.3f} mol/m²/day of photon delivered in total.\n\
---------------------------------------------------------------------------------\n'
-    return dli_details
-
-def generate_meta(schedule_dic):
-    """
-    """
-    meta = schedule_dic["out"] +\
-           ':meta="{\\"unit\\":\\"A\\",\\"module\\":{\\"driver\\":{\\"configuration\\":[' +\
-           f'{schedule_dic["number_of_modules_in_serie"]:1d},1],\\"id\\":\\"' +\
-           f'{schedule_dic["driver"]}' + '\\"},\\"id\\":\\"' +\
-           f'{schedule_dic["module"]}' + '\\"},\\"type\\":\\"light\\",\\"icon\\":\\"' +\
-           f'{schedule_dic["module_type"]}' + '\\",\\"id\\":\\"' +\
-           f'{schedule_dic["module"]}' + '\\",\\"name\\":\\"' +\
-           f'{schedule_dic["eco_module_name"]}' +\
-           f'\\",\\"ecos\\":[\\"Lithops\\"],\\"curr\\":{(schedule_dic["driver_maximum_intensity"]/1000):0.2f}' + '}"'
-    return meta
-
-def generate_schedule(date, schedules_dic, schedule_name, debug=False):
-    """
-    """
-    schedule_dic = schedules_dic[schedule_name]
-    if "composed" in schedule_dic.keys():
-        print(f'Composed...')
-        # if the schedule is a composition of schedules
-        schedule = generate_composed_schedule(date, schedules_dic, schedule_name, debug=debug)
-        print(f'Composed {schedule_name} finished')
-    else:
-        print(f'Simple...')
-        # We generate a simple schedule
-        schedule = generate_simple_schedule(date, schedules_dic, schedule_name, debug=debug)
-        print(f'Simple {schedule_name} finished')
-    return schedule
-
-def generate_simple_schedule(date, schedules_dic, schedule_name, debug=False):
-    """
-    """
-    schedule_dic = schedules_dic[schedule_name]
-    maximum_voltage = 10 * schedule_dic["maximum_intensity_required"] * schedule_dic["maximum_voltage_proportion"]
-
-    (data_points_seconds,
-    junk,
-    daily_earliest_power_on,
-    daily_latest_power_off,
-    daily_maximum_intensity) = lml.create_intensity_data_suntime(maximum_voltage,
-                                                                 date=date,
-                                                                 mode=schedule_dic["mode"],
-                                                                 length_proportion=schedule_dic["length_proportion"],
-                                                                 shift_proportion=schedule_dic["shift_proportion"],
-                                                                 transition_duration_minutes=schedule_dic["transition_duration_minutes"],
-                                                                 maximum_broadness=schedule_dic["maximum_broadness"],
-                                                                 plot=PLOT)
-    schedule_dic = {
-        'schedule_name': schedule_name,
-        'full_schedule': data_points_seconds,
-        'earliest_power_on': lml.get_equinox_sunrise(),
-        'daily_earliest_power_on': daily_earliest_power_on,
-        'latest_power_off': lml.get_equinox_sunset(),
-        'daily_latest_power_off': daily_latest_power_off,
-        'transition_duration_minutes': schedule_dic["transition_duration_minutes"],
-        'maximum_voltage': maximum_voltage,
-        'daily_maximum_intensity': daily_maximum_intensity
-    }
-    return schedule_dic
-
-def generate_composed_schedule(date, schedules_dic, schedule_name, debug=False):
-    """
-    """
-    schedule_dic = schedules_dic[schedule_name]
-    schedules = []
-    ponderation_factors = []
-    for schedule_name_in_list in schedule_dic["composed"]["list"]:
-        # recursive call to generate the schedules required to compose the schedule
-        #if isinstance(schedule_name_in_list, dict):
-
-        schedules.append(generate_schedules_new(date, schedules_dic, schedule_name=schedule_name_in_list, debug=debug))
-        ponderation_factors.append(schedules_dic[schedule_name_in_list]["maximum_intensity_required"] * schedules_dic[schedule_name_in_list]["driver_maximum_intensity"])
-    if schedule_dic["composed"]["operation"] == "sum":
-        # A sum should be done between two schedules with the same modules/drivers characteristics.
-        # If not, the second schedule should be scaled accordingly (NOT THE CASE CURRENTLY, see next elif for implementation)
-        full_schedule = lml.sum_data_points_seconds(schedules[0]['full_schedule'], schedules[1]['full_schedule'])
-    elif schedule_dic["composed"]["operation"] == "diff":
-        # A substraction is usually conducted to retract from one schedule the light
-        # produced by another, not of the same modules/drivers characteristics.
-        # Hence the scaling of the second by the ratio of the maximum_intensity_required of each schedule.
-        full_schedule = lml.substract_data_points_seconds(schedules[0]['full_schedule'], lml.scale_data_points_seconds(schedules[1]['full_schedule'], ponderation_factors[1]/ponderation_factors[0]))
-    schedule_dic = {
-        'schedule_name': schedule_name,
-        'full_schedule': full_schedule,
-        'earliest_power_on': lml.get_equinox_sunrise(),
-        'daily_earliest_power_on': min(schedules[0]['daily_earliest_power_on'], schedules[1]['daily_earliest_power_on']),
-        'latest_power_off': lml.get_equinox_sunset(),
-        'daily_latest_power_off': max(schedules[0]['daily_latest_power_off'], schedules[1]['daily_latest_power_off']),
-        'transition_duration_minutes': max(schedules[0]['transition_duration_minutes'], schedules[1]['transition_duration_minutes']),
-        'maximum_voltage': schedules[0]['maximum_voltage'],
-        'daily_maximum_intensity': schedules[0]['daily_maximum_intensity']
-    }
-    return schedule_dic
-
-def generate_schedules_new(date, schedules_dic, schedule_name=None, debug=False):
-    """
-    This function generates all the schedules defined in the schedules dictionary.
-    This dictionary is imported from a json file where all the parameters are kept.
-    See light_modulation.json for more details.
-    """
-    out_schedule_dic = {}
-    color_dic = {}
-    schedule_dic_list = []
-    schedules_json_driver_dic = {}
-    schedules_dic_to_treat = {}
-
-    # if we receive no schedule_name, we begin by the schedules to output (with a "name" key).
-    # This should be the case during the first and general call. The function is
-    # called recursively with a schedule_name defined.
-    if schedule_name is None:
-        print(f'0- Schedule_name is None')
-        for schedule_name, schedule_dic in schedules_dic.items():
-            if "name" in schedule_dic.keys():
-                print(f'0- Name in schedule_dic: {schedule_name}')
-                schedules_dic_to_treat[schedule_name] = schedules_dic[schedule_name]
-    else:
-        print(f'1- Schedule_name: {schedule_name}')
-        schedules_dic_to_treat[schedule_name] = schedules_dic[schedule_name]
-
-    # We treat all (or only one) schedules
-    schedule = {}
-    schedule_out = []
-    for name, schedule_dic in schedules_dic_to_treat.items():
-        print(f'Name to treat: {name}')
-        schedule = generate_schedule(date, schedules_dic, name, debug=debug)
-        if (schedule_name is not None) and len(schedules_dic_to_treat.keys()) == 1:
-            print(f'{schedule_name}, Schedule_name is not None: {schedule_name is not None}')
-            # the simple schedule is to be used to calculate another schedule
-            # return from a recursive call
-            return schedule
-        else:
-            print(f'Schedule_name is not None: {schedule_name is not None}')
-            # the simple schedule is a final one to output
-            schedule_out = lml.clean_and_simplify_to_desired_points(lml.gate_data_points_seconds(schedule['full_schedule'], lower_gate=schedule_dic["driver_minimal_voltage_for_light"], plot=PLOT), plot=PLOT)
-            out_schedule_dic[name] = (schedule_out, schedule_dic["out"], schedule_dic["meta"])
-        # keep schedules and details in structures for output
-        out_schedule_dic[name] = (schedule_out, schedule_dic["out"], generate_meta(schedule_dic))
-        # for plots
-        color_dic[name] = schedule_dic["plot_color"]
-        schedules_json_driver_dic[name] = (schedule_out, lml.get_module_json(schedule_dic["json"]), schedule_dic["driver_maximum_intensity"], schedule_dic["number_of_modules_in_serie"])
-        # for mail report
-        schedule_dic_list.append(schedule)
-
-    # generation of documentations
-    dli_details = generate_dli_details(schedules_dic_to_treat, out_schedule_dic)
-    result_for_mail = generate_result_for_email(schedule_dic_list, complementary_text=dli_details)
-
-    # generation of plots TODO: change the arg debug to follow better switchargs...
-    if debug is True:
-        lml.create_plot(schedules_json_driver_dic, color_dic, date, timing=10, save_path="./schedules.png")
-        lml.animate_daily_spectrum(schedules_json_driver_dic, save_path="./spectrum_animation.mp4")
-
-    return lml.stringify_schedules_in_dic(out_schedule_dic), result_for_mail
 
 def generate_schedules(date, debug=False):
     """
@@ -449,9 +245,9 @@ def generate_schedules(date, debug=False):
     schedule_3500_dic = generate_3500K_schedule(date, "schedule_3500", driver_maximum_intensity_3500K, maximum_intensity_required_3500K)
     # Gating the data so the lowest values produce already light.
     # Depending on your led array and driver, you should adjust this
-    data_points_seconds_3500 = lml.gate_data_points_seconds(schedule_3500_dic['full_schedule'], lower_gate=driver_minimal_voltage_for_light_3500K, plot=PLOT)
+    data_points_seconds_3500 = lmlg.gate_data_points_seconds(schedule_3500_dic['full_schedule'], lower_gate=driver_minimal_voltage_for_light_3500K, plot=PLOT)
     # The result is cleaned from redundant values and trimmed down to 32 values
-    schedule_3500 = lml.clean_and_simplify_to_desired_points(data_points_seconds_3500, plot=PLOT)
+    schedule_3500 = lmlg.clean_and_simplify_to_desired_points(data_points_seconds_3500, plot=PLOT)
 
 
     # --------------------------------------------------------------------------
@@ -463,14 +259,14 @@ def generate_schedules(date, debug=False):
     schedule_5000_dic = generate_5000K_schedule(date, "schedule_5000", driver_maximum_intensity_5000K, maximum_intensity_required_5000K)
     # Remove light from 5000K that is already given by 3500K
     # (hence the scaling! and the need to know relative drivers maximum intensity settings).
-    data_points_seconds_5000 = lml.substract_data_points_seconds(schedule_5000_dic['full_schedule'],
-                                                                 lml.scale_data_points_seconds(schedule_3500_dic['full_schedule'],
+    data_points_seconds_5000 = lmlg.substract_data_points_seconds(schedule_5000_dic['full_schedule'],
+                                                                 lmlg.scale_data_points_seconds(schedule_3500_dic['full_schedule'],
                                                                                                (maximum_intensity_required_3500K/maximum_intensity_required_5000K)))
     # Gating the data so the lowest values produce already light.
     # Depending on your led array and driver, you should adjust this
-    data_points_seconds_5000 = lml.gate_data_points_seconds(data_points_seconds_5000, lower_gate=driver_minimal_voltage_for_light_5000K, plot=PLOT)
+    data_points_seconds_5000 = lmlg.gate_data_points_seconds(data_points_seconds_5000, lower_gate=driver_minimal_voltage_for_light_5000K, plot=PLOT)
     # The result is cleaned from redundant values and trimmed down to 32 values
-    schedule_5000 = lml.clean_and_simplify_to_desired_points(data_points_seconds_5000, plot=PLOT)
+    schedule_5000 = lmlg.clean_and_simplify_to_desired_points(data_points_seconds_5000, plot=PLOT)
 
 
     # --------------------------------------------------------------------------
@@ -482,9 +278,9 @@ def generate_schedules(date, debug=False):
     schedule_385_dic = generate_385_schedule(date, "schedule_385", driver_maximum_intensity_385, maximum_intensity_required_385)
     # Gating the data so the lowest values produce already light.
     # Depending on your led array and driver, you should adjust this
-    data_points_seconds_385 = lml.gate_data_points_seconds(schedule_385_dic['full_schedule'], lower_gate=driver_minimal_voltage_for_light_385, plot=PLOT)
+    data_points_seconds_385 = lmlg.gate_data_points_seconds(schedule_385_dic['full_schedule'], lower_gate=driver_minimal_voltage_for_light_385, plot=PLOT)
     # The result is cleaned from redundant values and trimmed down to 32 values
-    schedule_385 = lml.clean_and_simplify_to_desired_points(data_points_seconds_385, plot=PLOT)
+    schedule_385 = lmlg.clean_and_simplify_to_desired_points(data_points_seconds_385, plot=PLOT)
 
     # --------------------------------------------------------------------------
     # Generation of schedule for APEXengines 660 MKIII
@@ -495,9 +291,9 @@ def generate_schedules(date, debug=False):
     schedule_660_dic = generate_660_schedule(date, "schedule_660", driver_maximum_intensity_660, maximum_intensity_required_660)
     # Gating the data so the lowest values produce already light.
     # Depending on your led array and driver, you should adjust this
-    data_points_seconds_660 = lml.gate_data_points_seconds(schedule_660_dic['full_schedule'], lower_gate=driver_minimal_voltage_for_light_660, plot=PLOT)
+    data_points_seconds_660 = lmlg.gate_data_points_seconds(schedule_660_dic['full_schedule'], lower_gate=driver_minimal_voltage_for_light_660, plot=PLOT)
     # The result is cleaned from redundant values and trimmed down to 32 values
-    schedule_660 = lml.clean_and_simplify_to_desired_points(data_points_seconds_660, plot=PLOT)
+    schedule_660 = lmlg.clean_and_simplify_to_desired_points(data_points_seconds_660, plot=PLOT)
 
     # --------------------------------------------------------------------------
     # packing of all the schedules generated in a dictionary.
@@ -524,17 +320,17 @@ def generate_schedules(date, debug=False):
 
     # --------------------------------------------------------------------------
     # get the json files for the modules
-    json_3500 = lml.get_module_json("fluxengine_3500k")
-    json_5000 = lml.get_module_json("fluxengine_5000k")
-    json_385  = lml.get_module_json("apexengine_385")
-    json_660  = lml.get_module_json("apexengine_660")
+    json_3500 = lmlg.get_module_json("fluxengine_3500k")
+    json_5000 = lmlg.get_module_json("fluxengine_5000k")
+    json_385  = lmlg.get_module_json("apexengine_385")
+    json_660  = lmlg.get_module_json("apexengine_660")
     lit_area = 0.4 #m²
     loss_factor = 0.8 #%
 
-    dli_3500 = loss_factor*number_of_modules_in_serie_3500K*lml.get_dli_by_m2(schedule_3500, driver_maximum_intensity_3500K, json_3500, lit_area)/1000000
-    dli_5000 = loss_factor*number_of_modules_in_serie_5000K*lml.get_dli_by_m2(schedule_5000, driver_maximum_intensity_5000K, json_5000, lit_area)/1000000
-    dli_385  = loss_factor*number_of_modules_in_serie_385*lml.get_dli_by_m2(schedule_385,  driver_maximum_intensity_385,   json_385, lit_area) /1000000
-    dli_660  = loss_factor*number_of_modules_in_serie_660*lml.get_dli_by_m2(schedule_660,  driver_maximum_intensity_660,   json_660, lit_area) /1000000
+    dli_3500 = loss_factor*number_of_modules_in_serie_3500K*lmlg.get_dli_by_m2(schedule_3500, driver_maximum_intensity_3500K, json_3500, lit_area)/1000000
+    dli_5000 = loss_factor*number_of_modules_in_serie_5000K*lmlg.get_dli_by_m2(schedule_5000, driver_maximum_intensity_5000K, json_5000, lit_area)/1000000
+    dli_385  = loss_factor*number_of_modules_in_serie_385*lmlg.get_dli_by_m2(schedule_385,  driver_maximum_intensity_385,   json_385, lit_area) /1000000
+    dli_660  = loss_factor*number_of_modules_in_serie_660*lmlg.get_dli_by_m2(schedule_660,  driver_maximum_intensity_660,   json_660, lit_area) /1000000
 
     dli_details = f'\
 DLI for the schedules calculated based on modules numbers, \n\
@@ -557,17 +353,227 @@ and a loss factor of {((1.0-loss_factor)*100):2.0f}% \n\
             "schedule_385"  : (schedule_385,  json_385, driver_maximum_intensity_385, number_of_modules_in_serie_385),
             "schedule_660"  : (schedule_660,  json_660, driver_maximum_intensity_660, number_of_modules_in_serie_660)
         }
-        lml.create_plot(schedules_json_driver_dic, color_dic, date, timing=10, save_path="./schedules.png")
-        lml.animate_daily_spectrum(schedules_json_driver_dic, save_path="./spectrum_animation.mp4")
+        lmlp.create_plot(schedules_json_driver_dic, color_dic, date, timing=10, save_path="./schedules.png")
+        lmlp.animate_daily_spectrum(schedules_json_driver_dic, save_path="./spectrum_animation.mp4")
 
     # --------------------------------------------------------------------------
     # Shedules need to be passed as string to the Crescontrol.
-    schedule_dic = lml.stringify_schedules_in_dic(schedule_dic)
+    schedule_dic = lmlg.stringify_schedules_in_dic(schedule_dic)
 
     # generate a report of schedules generated to be sent by email (or simply printed)
     schedules_dic_list = [schedule_3500_dic, schedule_5000_dic, schedule_385_dic, schedule_660_dic]
     result_for_mail = generate_result_for_email(schedules_dic_list, complementary_text=dli_details)
 
     return schedule_dic, result_for_mail
+
+# - New methodology ------------------------------------------------------------
+def generate_schedule(date, schedules_dic, schedule_name, debug=False):
+    """
+    """
+    schedule_dic = schedules_dic[schedule_name]
+    if "composed" in schedule_dic.keys():
+        logging.debug(f'Composed...')
+        # if the schedule is a composition of schedules
+        schedule = generate_composed_schedule(date, schedules_dic, schedule_name, debug=debug)
+        logging.debug(f'Composed {schedule_name} finished')
+    else:
+        logging.debug(f'Simple...')
+        # We generate a simple schedule
+        schedule = generate_simple_schedule(date, schedules_dic, schedule_name, debug=debug)
+        logging.debug(f'Simple {schedule_name} finished')
+    return schedule
+
+def generate_simple_schedule(date, schedules_dic, schedule_name, debug=False):
+    """
+    """
+    schedule_dic = schedules_dic[schedule_name]
+    maximum_voltage = 10 * schedule_dic["maximum_intensity_required"] * schedule_dic["maximum_voltage_proportion"]
+
+    (data_points_seconds,
+    junk,
+    daily_earliest_power_on,
+    daily_latest_power_off,
+    daily_maximum_intensity) = lmlg.create_intensity_data_suntime(maximum_voltage,
+                                                                 date=date,
+                                                                 mode=schedule_dic["mode"],
+                                                                 length_proportion=schedule_dic["length_proportion"],
+                                                                 shift_proportion=schedule_dic["shift_proportion"],
+                                                                 transition_duration_minutes=schedule_dic["transition_duration_minutes"],
+                                                                 maximum_broadness=schedule_dic["maximum_broadness"],
+                                                                 plot=PLOT)
+    schedule_dic = {
+        'schedule_name': schedule_name,
+        'full_schedule': data_points_seconds,
+        'earliest_power_on': lmlg.get_equinox_sunrise(),
+        'daily_earliest_power_on': daily_earliest_power_on,
+        'latest_power_off': lmlg.get_equinox_sunset(),
+        'daily_latest_power_off': daily_latest_power_off,
+        'transition_duration_minutes': schedule_dic["transition_duration_minutes"],
+        'maximum_voltage': maximum_voltage,
+        'daily_maximum_intensity': daily_maximum_intensity
+    }
+    return schedule_dic
+
+def generate_composed_schedule(date, schedules_dic, schedule_name, debug=False):
+    """
+    """
+    schedule_dic = schedules_dic[schedule_name]
+    schedules = []
+    ponderation_factors = []
+    for schedule_name_in_list in schedule_dic["composed"]["list"]:
+        # recursive call to generate the schedules required to compose the schedule
+        #if isinstance(schedule_name_in_list, dict):
+
+        schedules.append(generate_schedules_new(date, schedules_dic, schedule_name=schedule_name_in_list, debug=debug))
+        ponderation_factors.append(schedules_dic[schedule_name_in_list]["maximum_intensity_required"] * schedules_dic[schedule_name_in_list]["driver_maximum_intensity"])
+    if schedule_dic["composed"]["operation"] == "sum":
+        # A sum should be done between two schedules with the same modules/drivers characteristics.
+        # If not, the second schedule should be scaled accordingly (NOT THE CASE CURRENTLY, see next elif for implementation)
+        full_schedule = lmlg.sum_data_points_seconds(schedules[0]['full_schedule'], schedules[1]['full_schedule'])
+    elif schedule_dic["composed"]["operation"] == "diff":
+        # A substraction is usually conducted to retract from one schedule the light
+        # produced by another, not of the same modules/drivers characteristics.
+        # Hence the scaling of the second by the ratio of the maximum_intensity_required of each schedule.
+        full_schedule = lmlg.substract_data_points_seconds(schedules[0]['full_schedule'], lmlg.scale_data_points_seconds(schedules[1]['full_schedule'], ponderation_factors[1]/ponderation_factors[0]))
+    schedule_dic = {
+        'schedule_name': schedule_name,
+        'full_schedule': full_schedule,
+        'earliest_power_on': lmlg.get_equinox_sunrise(),
+        'daily_earliest_power_on': min(schedules[0]['daily_earliest_power_on'], schedules[1]['daily_earliest_power_on']),
+        'latest_power_off': lmlg.get_equinox_sunset(),
+        'daily_latest_power_off': max(schedules[0]['daily_latest_power_off'], schedules[1]['daily_latest_power_off']),
+        'transition_duration_minutes': max(schedules[0]['transition_duration_minutes'], schedules[1]['transition_duration_minutes']),
+        'maximum_voltage': schedules[0]['maximum_voltage'],
+        'daily_maximum_intensity': schedules[0]['daily_maximum_intensity']
+    }
+    return schedule_dic
+
+def generate_schedules_new(date, schedules_dic, schedule_name=None, debug=False):
+    """
+    This function generates all the schedules defined in the schedules dictionary.
+    This dictionary is imported from a json file where all the parameters are kept.
+    See light_modulation.json for more details.
+    """
+    out_schedule_dic = {}
+    color_dic = {}
+    schedule_dic_list = []
+    schedules_json_driver_dic = {}
+    schedules_dic_to_treat = {}
+
+    # if we receive no schedule_name, we begin by the schedules to output (with a "name" key).
+    # This should be the case during the first and general call. The function is
+    # called recursively with a schedule_name defined.
+    if schedule_name is None:
+        logging.debug(f'0- Schedule_name is None')
+        for schedule_name, schedule_dic in schedules_dic.items():
+            if "name" in schedule_dic.keys():
+                logging.debug(f'0- Name in schedule_dic: {schedule_name}')
+                schedules_dic_to_treat[schedule_name] = schedules_dic[schedule_name]
+    else:
+        logging.debug(f'1- Schedule_name: {schedule_name}')
+        schedules_dic_to_treat[schedule_name] = schedules_dic[schedule_name]
+
+    # We treat all (or only one) schedules
+    schedule = {}
+    schedule_out = []
+    for name, schedule_dic in schedules_dic_to_treat.items():
+        logging.debug(f'Name to treat: {name}')
+        schedule = generate_schedule(date, schedules_dic, name, debug=debug)
+        if (schedule_name is not None) and len(schedules_dic_to_treat.keys()) == 1:
+            logging.debug(f'{schedule_name}, Schedule_name is not None: {schedule_name is not None}')
+            # the simple schedule is to be used to calculate another schedule
+            # return from a recursive call
+            return schedule
+        else:
+            logging.debug(f'Schedule_name is not None: {schedule_name is not None}')
+            # the simple schedule is a final one to output
+            schedule_out = lmlg.clean_and_simplify_to_desired_points(lmlg.gate_data_points_seconds(schedule['full_schedule'], lower_gate=schedule_dic["driver_minimal_voltage_for_light"], plot=PLOT), plot=PLOT)
+            out_schedule_dic[name] = (schedule_out, schedule_dic["out"], schedule_dic["meta"])
+        # keep schedules and details in structures for output
+        out_schedule_dic[name] = (schedule_out, schedule_dic["out"], generate_meta(schedule_dic))
+        # for plots
+        color_dic[name] = schedule_dic["plot_color"]
+        schedules_json_driver_dic[name] = (schedule_out, lmlg.get_module_json(schedule_dic["json"]), schedule_dic["driver_maximum_intensity"], schedule_dic["number_of_modules_in_serie"])
+        # for mail report
+        schedule_dic_list.append(schedule)
+
+    # generation of documentations
+    dli_details = generate_dli_details(schedules_dic_to_treat, out_schedule_dic)
+    result_for_mail = generate_result_for_email(schedule_dic_list, complementary_text=dli_details)
+
+    # generation of plots TODO: change the arg debug to follow better switchargs...
+    if debug is True:
+        lmlp.create_plot(schedules_json_driver_dic, color_dic, date, timing=10, save_path="./schedules.png")
+        lmlp.animate_daily_spectrum(schedules_json_driver_dic, save_path="./spectrum_animation.mp4")
+
+    return lmlg.stringify_schedules_in_dic(out_schedule_dic), result_for_mail
+
+# ------------------------------------------------------------------------------
+def generate_result_for_email(schedule_dic_list, complementary_text=""):
+    result_for_mail = '\
+Daily report of led lights schedules modulation\n\
+--------------------------------------------------------------------------------\n\
+Current day and time on %s: %s\n\
+--------------------------------------------------------------------------------\n\
+' % (f'{lmlc.get_local_ip()}',
+     f'{lmlg.datetime.datetime.now():%d %b %Y - %H:%M:%S}')
+    for schedule_dic in schedule_dic_list:
+        result_for_mail += '\
+Schedule for %s\n\
+    begin: %s  (time modulation: %s)\n\
+    end:   %s  (time modulation: %s)\n\
+    max:   %sV (int. modulation:  %s%%)\n\n\
+' % (schedule_dic['schedule_name'],
+     "%02dh%02d" % (schedule_dic['daily_earliest_power_on'], (schedule_dic['daily_earliest_power_on']*60)%60),
+     lmlc.format_time_modulation_delta(schedule_dic['daily_earliest_power_on'], schedule_dic['earliest_power_on'], "%02dh%02dm"),
+     "%02dh%02d" % (schedule_dic['daily_latest_power_off'], (schedule_dic['daily_latest_power_off']*60)%60),
+     lmlc.format_time_modulation_delta(schedule_dic['daily_latest_power_off'], schedule_dic['latest_power_off'], "%02dh%02dm"),
+     "%05.2f" % (schedule_dic['maximum_voltage']*schedule_dic['daily_maximum_intensity']),
+     "%02.2f" % ((schedule_dic['daily_maximum_intensity'])*100.0))
+    result_for_mail += '\
+--------------------------------------------------------------------------------\n'
+    result_for_mail += complementary_text
+    return result_for_mail
+
+def generate_dli_details(schedules_dic_to_treat, out_schedule_dic):
+    """
+    """
+    lit_area = 0.4 #m²
+    loss_factor = 0.8 #%
+    total_dli = 0
+    dli_details = f'\
+DLI for the schedules calculated based on modules numbers, \n\
+characteristics and driver settings for a lit area of {lit_area}m² \n\
+and a loss factor of {((1.0-loss_factor)*100):2.0f}% \n\
+--------------------------------------------------------------------------------\n'
+
+    for schedule_name, schedule_dic in schedules_dic_to_treat.items():
+        # get the json files for the modules
+        json = lmlg.get_module_json(schedule_dic["json"])
+        number_of_modules_in_serie = schedule_dic["number_of_modules_in_serie"]
+        schedule = out_schedule_dic[schedule_name][0]
+        driver_maximum_intensity = schedule_dic["driver_maximum_intensity"]
+        dli = loss_factor*number_of_modules_in_serie*lmlg.get_dli_by_m2(schedule, driver_maximum_intensity, json, lit_area)/1000000
+        total_dli += dli
+        dli_details += f'\
+{dli:6.3f} mol/m²/day of photon delivered by {number_of_modules_in_serie} {schedule_dic["json"]} on a driver set at {driver_maximum_intensity:4.0f}mA.\n'
+    dli_details += f'\
+{total_dli:6.3f} mol/m²/day of photon delivered in total.\n\
+--------------------------------------------------------------------------------\n'
+    return dli_details
+
+def generate_meta(schedule_dic):
+    """
+    """
+    meta = schedule_dic["out"] +\
+           ':meta="{\\"unit\\":\\"A\\",\\"module\\":{\\"driver\\":{\\"configuration\\":[' +\
+           f'{schedule_dic["number_of_modules_in_serie"]:1d},1],\\"id\\":\\"' +\
+           f'{schedule_dic["driver"]}' + '\\"},\\"id\\":\\"' +\
+           f'{schedule_dic["module"]}' + '\\"},\\"type\\":\\"light\\",\\"icon\\":\\"' +\
+           f'{schedule_dic["module_type"]}' + '\\",\\"id\\":\\"' +\
+           f'{schedule_dic["module"]}' + '\\",\\"name\\":\\"' +\
+           f'{schedule_dic["eco_module_name"]}' +\
+           f'\\",\\"ecos\\":[\\"Lithops\\"],\\"curr\\":{(schedule_dic["driver_maximum_intensity"]/1000):0.2f}' + '}"'
+    return meta
 
 # ------------------------------------------------------------------------------
