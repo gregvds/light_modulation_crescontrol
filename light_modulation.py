@@ -9,6 +9,7 @@
 # -- Import for the generation of data_points and communications
 import os
 import sys
+import time
 import datetime
 import argparse
 import logging
@@ -99,6 +100,7 @@ def set_log(verbosity):
                         level=level)
 
 def main():
+    start = time.time()
     args = get_args()
 
     set_log(args.verbosity)
@@ -150,10 +152,12 @@ def main():
         else:
             # no CresControl found!
             logging.warning(f'Crescontrol on {lmt.CRESCONTROL_IP} was not found, nothing done!\n')
-        lmlc.close_ws()
+        lmlc.close_ws_on_cc()
     else:
         logging.info('No queries sent to CresControl (arg -q received).')
-    logging.info('Finished.')
+    end = time.time()
+    time_taken = end - start
+    logging.info(f'Finished in {lmlc.round_thousands_second_time_delta(time_taken)} secs.')
 
     # Send of mail if not in no mail mode
     if not args.nomail:

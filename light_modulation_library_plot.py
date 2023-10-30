@@ -23,7 +23,62 @@ from pytz import timezone
 import light_modulation_library_generation as lmlg
 import light_modulation_settings as lmt
 
-# --- Supplementary functions, for debug, plotting and so on -------------------
+# --- plotting functions -------------------------------------------------------
+
+def wavelength_to_rgb(wavelength, gamma=0.8):
+    '''
+    Create a color map based on the wavelength values
+
+    taken from http://www.noah.org/wiki/Wavelength_to_RGB_in_Python
+    This converts a given wavelength of light to an
+    approximate RGB color value. The wavelength must be given
+    in nanometers in the range from 380 nm through 750 nm
+    (789 THz through 400 THz).
+
+    Based on code by Dan Bruton
+    http://www.physics.sfasu.edu/astro/color/spectra.html
+    Additionally alpha value set to 0.5 outside range
+    '''
+    wavelength = float(wavelength)
+    if wavelength >= 380 and wavelength <= 750:
+        A = 1.
+    else:
+        A=0.5
+    if wavelength < 380:
+        wavelength = 380.
+    if wavelength >750:
+        wavelength = 750.
+    if wavelength >= 380 and wavelength <= 440:
+        attenuation = 0.3 + 0.7 * (wavelength - 380) / (440 - 380)
+        R = ((-(wavelength - 440) / (440 - 380)) * attenuation) ** gamma
+        G = 0.0
+        B = (1.0 * attenuation) ** gamma
+    elif wavelength >= 440 and wavelength <= 490:
+        R = 0.0
+        G = ((wavelength - 440) / (490 - 440)) ** gamma
+        B = 1.0
+    elif wavelength >= 490 and wavelength <= 510:
+        R = 0.0
+        G = 1.0
+        B = (-(wavelength - 510) / (510 - 490)) ** gamma
+    elif wavelength >= 510 and wavelength <= 580:
+        R = ((wavelength - 510) / (580 - 510)) ** gamma
+        G = 1.0
+        B = 0.0
+    elif wavelength >= 580 and wavelength <= 645:
+        R = 1.0
+        G = (-(wavelength - 645) / (645 - 580)) ** gamma
+        B = 0.0
+    elif wavelength >= 645 and wavelength <= 750:
+        attenuation = 0.3 + 0.7 * (750 - wavelength) / (750 - 645)
+        R = (1.0 * attenuation) ** gamma
+        G = 0.0
+        B = 0.0
+    else:
+        R = 0.0
+        G = 0.0
+        B = 0.0
+    return (R,G,B,A)
 
 def create_monthly_plots(day=21):
     """
@@ -61,6 +116,205 @@ def create_monthly_plots(day=21):
     plt.tight_layout()
     plt.show()
 
+def plot_data_on_ax(data_points_seconds, ax, title="", timing=0.01):
+    """
+
+    """
+    (times, intensities) = zip(*data_points_seconds)
+    ax.clear()  # Clear the previous plot
+    ax.plot(times, intensities, marker='+', linestyle='-', color='r', label='Original Data')
+    # Set the x-axis and y-axis limits
+    plt.xlim(0, 86400)  # Replace xmin and xmax with your desired minimum and maximum for the x-axis
+    plt.ylim(0.0, 10)  # Replace ymin and ymax with your desired minimum and maximum for the y-axis
+    x_ticks = np.arange(0, 86401, 3600)  # Define x-axis tick positions at intervals of one hour
+    y_ticks = np.arange(0.0, 10.1, 0.5)  # Define y-axis tick positions at intervals of 10V
+    plt.xticks(x_ticks)  # Set x-axis tick positions
+    plt.yticks(y_ticks)  # Set y-axis tick positions
+    plt.xticks(rotation=90)
+    ax.set_xlabel('Time (seconds since midnight)')
+    ax.set_ylabel('Intensity')
+    ax.set_title(title)
+    #ax.legend()
+    ax.grid(True)
+    plt.pause(timing)
+
+def create_plot(schedule_dic, color_dic, date=None, timing=5.0, save_path=None):
+    """
+    Function to plot several schedules
+    Demo of capability and debug/confirmation of schedules generated
+    """
+    maximum_intensity = 500
+    #plt.ion()
+    fig, ax = plt.subplots(figsize=(11, 6))
+    fig.set_facecolor("dimgrey")
+    ax.set_facecolor("dimgrey")
+    #fig = plt.figure(figsize=(10, 6))
+    sum_intensities = [(0.0,0.0)]
+    for label, (schedule, json, driver_maximum_intensity, number_of_modules) in schedule_dic.items():
+        photon_schedule = [(time, number_of_modules*lmlg.get_photon_flux_for_i(json, lmlg.get_i_from_u_and_maximum_driver_intensity(v_value, driver_maximum_intensity))) for (time, v_value) in schedule]
+        # The simple sum does not work because the time coords are not synchronous.
+        # One does need an interp_sum function here
+        #sum_intensities = sum_data_points_seconds(sum_intensities, photon_schedule, max_intensity=10000.0)
+        # Unpack the time and intensity values
+        times, intensities = zip(*photon_schedule)
+        # Create a plot and add lines
+        ax.plot(times, intensities, label=label, marker='o', linestyle='-', color=color_dic[label])
+    #times, intensities = zip(*sum_intensities)
+    #maximum_intensity = (math.ceil(max(intensities)*10))/10
+    #ax.plot(times, intensities, label='total', marker='o', linestyle='--', color='lightgray')
+
+    current_date        = date if date is not None else datetime.date.today()
+    sun                 = Sun(lmt.LATITUDE, lmt.LONGITUDE)
+    sunrise_time_Seconds   = 3600 * lmlg.convert_datetime_to_decimal_hour(sun.get_sunrise_time(current_date) + datetime.timedelta(seconds=3600*lmt.TIMEZONE))
+    sunset_time_seconds    = 3600 * lmlg.convert_datetime_to_decimal_hour(sun.get_sunset_time(current_date) + datetime.timedelta(seconds=3600*lmt.TIMEZONE))
+    solstice_sum_sunrise   = 3600 * lmlg.get_summer_solstice_sunrise()
+    solstice_sum_sunset    = 3600 * lmlg.get_summer_solstice_sunset()
+    solstice_win_sunrise   = 3600 * lmlg.get_winter_solstice_sunrise()
+    solstice_win_sunset    = 3600 * lmlg.get_winter_solstice_sunset()
+
+    sunrise_sunset_ys = (0, maximum_intensity)
+    ax.plot((solstice_sum_sunrise, solstice_sum_sunrise), sunrise_sunset_ys, label='Summer Solstice Sunrise', linestyle=':', color='gold')
+    ax.plot((sunrise_time_Seconds, sunrise_time_Seconds), sunrise_sunset_ys, label=f'Current Sunrise ({lmlg.convert_decimal_hour_to_human_hour(sunrise_time_Seconds/3600)})', linestyle='--', color='goldenrod')
+    ax.plot((solstice_win_sunrise, solstice_win_sunrise), sunrise_sunset_ys, label='Winter Solstice Sunrise', linestyle=':', color='darkgoldenrod')
+    ax.plot((solstice_sum_sunset, solstice_sum_sunset), sunrise_sunset_ys, label='Summer Solstice Sunset', linestyle=':', color='lightcoral')
+    ax.plot((sunset_time_seconds, sunset_time_seconds), sunrise_sunset_ys, label=f'Current Sunset ({lmlg.convert_decimal_hour_to_human_hour(sunset_time_seconds/3600)})', linestyle='--', color='indianred')
+    ax.plot((solstice_win_sunset, solstice_win_sunset), sunrise_sunset_ys, label='Winter Solstice Sunset', linestyle=':', color='firebrick')
+    # Set the x-axis and y-axis limits
+    plt.xlim(0, 86400)  # Replace xmin and xmax with your desired minimum and maximum for the x-axis
+    plt.ylim(0.0, maximum_intensity)  # Replace ymin and ymax with your desired minimum and maximum for the y-axis
+
+    # Create a function to update the vertical line
+    def update_vertical_line(num, line, ax, legend):
+        #legend = ax.legend()
+        #legend.remove()
+        current_time = datetime.datetime.now(timezone('Europe/Brussels'))  # Replace 'Your_Timezone' with your desired timezone
+        current_time_seconds = (current_time - current_time.replace(hour=0, minute=0, second=0, microsecond=0)).total_seconds()
+        line.set_xdata([current_time_seconds, current_time_seconds])
+        line.set_label(f'Current Time ({current_time.strftime("%H:%M:%S")})')
+
+        legend = ax.legend()
+        return line,
+
+    # Create the vertical line
+    current_time_line, = ax.plot([0, 0], [0, maximum_intensity], label='Current Time ()', linestyle='--', color='white')
+
+    # Set the x-axis and y-axis limits (same as in your code)
+    plt.xlim(0, 86400)
+    plt.ylim(0.0, maximum_intensity)
+
+    # Customize grid steps (tick intervals) for x and y axes
+    x_ticks = np.arange(0, 86401, 3600)  # Define x-axis tick positions at intervals of one hour
+    y_ticks = np.arange(0.0, maximum_intensity+ 0.1, maximum_intensity/10)  # Define y-axis tick positions at intervals of 10V
+    plt.xticks(x_ticks)  # Set x-axis tick positions
+    plt.yticks(y_ticks)  # Set y-axis tick positions
+    plt.xticks(rotation=90)
+
+    # Set labels and title
+    ax.set_xlabel('Time (seconds)')
+    ax.set_ylabel('Photon intensity')
+    ax.set_title(f'Intensity Comparison - {current_date:%d %b %Y}')
+    ax.grid(True)
+    # Add a legend
+    legend = ax.legend()
+    # Create an animation to update the vertical line every 10 seconds
+    ani = animation.FuncAnimation(fig, update_vertical_line, fargs=(current_time_line, ax, legend),
+                                  interval=10, blit=True, cache_frame_data=False)
+
+    # Add top x-axis with hour labels
+    top_ax = ax.twiny()
+    top_ax.set_xlim(ax.get_xlim())
+    top_ticks = np.arange(0, 86401, 3600)
+    top_tick_labels = [f'{hour:02d}h' for hour in range(25)]
+    top_ax.set_xticks(top_ticks)
+    top_ax.set_xticklabels(top_tick_labels, rotation=90, horizontalalignment='center')
+    top_ax.spines['top'].set_position(('outward', 0))
+    top_ax.set_xlabel('Time (hours)')
+
+    if save_path:
+        fig.savefig(save_path)
+    plt.show()
+
+def animate_daily_spectrum(schedule_dic, time_step=60, save_path=None):
+    """
+    This function plots a spectrum diagram animated by the schedules defined for a day.
+    if a save_path is received, it saves an mp4 video of it.
+    A complete cumulated spectrum is plotted, along with two more lines to discriminate
+    the contribution of the two first schedules.
+    This function is currently tailored to receive 4 schedules, for FLUXengines 3500K, 5000k, APEXengines 385nm and 660nm.
+    It plots vertical lines for 385 and 660nm. This should be adapted for other modules list.
+    """
+    schedules = [[schedule, lmlg.get_photon_spectrum(json), maximum_driver_intensity, number_of_modules, json] for schedule_name, (schedule, json, maximum_driver_intensity, number_of_modules) in schedule_dic.items()]
+
+    # Define the time range of the day in seconds
+    start_time = 21600
+    end_time   = 79200
+
+    # Defines the maximum of intensity for the spectrum
+    max_intensity = 1000
+
+    # Create a figure and axis for the plot
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    clim=(300,780)
+    norm = plt.Normalize(*clim)
+    wl = np.arange(clim[0],clim[1]+1,2)
+    colorlist = list(zip(norm(wl),[wavelength_to_rgb(w) for w in wl]))
+    spectralmap = LinearSegmentedColormap.from_list("spectrum", colorlist)
+
+    wavelengths=range(clim[0], clim[1]+1,1)
+    y = np.linspace(0, max_intensity, 100)
+    X,Y = np.meshgrid(wavelengths, y)
+    extent=(np.min(wavelengths), np.max(wavelengths), np.min(y), np.max(y))
+
+    # Function to update the plot for each time of the day
+    def update_plot(time_in_seconds):
+        ax.clear()
+        spectra_list                       = []
+        spectra_list_no_660_no_385         = []
+        spectra_list_no_660_no_385_no_5000 = []
+        for i in range(len(schedules)):
+            intensity = lmlg.get_i_from_schedule(schedules[i][0], time_in_seconds, schedules[i][2])  # intensity in Amper
+            optical_power_for_i = lmlg.get_optical_power_for_i(schedules[i][4], intensity)
+            spectra_list.append(lmlg.get_spectrum_for_modules(schedules[i][1], optical_power_for_i, schedules[i][3]))
+            if i < 2:
+                spectra_list_no_660_no_385.append(lmlg.get_spectrum_for_modules(schedules[i][1],optical_power_for_i, schedules[i][3]))
+                if i < 1:
+                    spectra_list_no_660_no_385_no_5000.append(lmlg.get_spectrum_for_modules(schedules[i][1],optical_power_for_i, schedules[i][3]))
+        spectra_sum                       = lmlg.get_spectra_sum(spectra_list)
+        spectra_sum_no_660_no_385         = lmlg.get_spectra_sum(spectra_list_no_660_no_385)
+        spectra_sum_no_660_no_385_no_5000 = lmlg.get_spectra_sum(spectra_list_no_660_no_385_no_5000)
+        wavelength, intensity                                             = zip(*spectra_sum)
+        wavelength_no_660_no_385, intensity_no_660_no_385                 = zip(*spectra_sum_no_660_no_385)
+        wavelength_no_660_no_385_no_5000, intensity_no_660_no_385_no_5000 = zip(*spectra_sum_no_660_no_385_no_5000)
+
+        # Plot spectrum
+        ax.plot(wavelength, intensity, linestyle='-', color='darkgray')
+        ax.plot(wavelength_no_660_no_385, intensity_no_660_no_385, linestyle=':', linewidth=1, color='darkgray')
+        ax.plot(wavelength_no_660_no_385_no_5000, intensity_no_660_no_385_no_5000, linestyle='--', linewidth=1.25, color='darkgray')
+
+        # show color spectrum below spectrum
+        plt.imshow(X, clim=clim,  extent=extent, cmap=spectralmap, aspect='auto')
+
+        # Hides color spectrum above spectrum
+        ax.fill_between(wavelength, intensity, max_intensity, color='w')
+
+        ax.plot((385, 385), (0.0, max_intensity), linestyle='--', linewidth=1, color='lightgray')
+        ax.plot((660, 660), (0.0, max_intensity), linestyle='--', linewidth=1, color='lightgray')
+
+        ax.set_xlim(clim[0],clim[1])
+        ax.set_ylim(0.0, max_intensity)
+        ax.set_xlabel('Wavelength (nm)')
+        ax.set_ylabel('Intensity (µmol/s.nm)')
+        ax.set_title(f'Spectrum Intensity - {lmlg.convert_seconds_to_human_hour(time_in_seconds)}')
+        ax.grid(True)
+
+    # Create the animation
+    anim = animation.FuncAnimation(fig, update_plot, frames=range(start_time, end_time+1, time_step), interval=100, cache_frame_data=False, repeat=False)
+    if save_path:
+        anim.save(save_path, writer='ffmpeg', fps=10)  # Save the animation to a file
+    # Display the animated plot
+    plt.show()
+
 def animate_yearly_schedule(maximum_voltage, save_path=None):
     """
     Generates an animated graph of a plain intensity curve along the year.
@@ -91,7 +345,7 @@ def animate_yearly_schedule(maximum_voltage, save_path=None):
     anim = animation.FuncAnimation(fig, update_plot, frames=pd.date_range(start_date, end_date), interval=100, cache_frame_data=False)
     if save_path:
         anim.save(save_path, writer='pillow', fps=10)  # Save the animation to a file
-    plt.show()  # Display the animated plot
+    plt.show()
 
 def create_yearly_schedule_3d_plot(maximum_voltage):
     """
@@ -194,260 +448,6 @@ def create_yearly_schedule_3d_plot(maximum_voltage):
 
    # Set the title and show the plot
     plt.title('Intensity Over the Year')
-    plt.show()
-
-def plot_data_on_ax(data_points_seconds, ax, title="", timing=0.01):
-    """
-
-    """
-    (times, intensities) = zip(*data_points_seconds)
-    ax.clear()  # Clear the previous plot
-    ax.plot(times, intensities, marker='+', linestyle='-', color='r', label='Original Data')
-    # Set the x-axis and y-axis limits
-    plt.xlim(0, 86400)  # Replace xmin and xmax with your desired minimum and maximum for the x-axis
-    plt.ylim(0.0, 10)  # Replace ymin and ymax with your desired minimum and maximum for the y-axis
-    x_ticks = np.arange(0, 86401, 3600)  # Define x-axis tick positions at intervals of one hour
-    y_ticks = np.arange(0.0, 10.1, 0.5)  # Define y-axis tick positions at intervals of 10V
-    plt.xticks(x_ticks)  # Set x-axis tick positions
-    plt.yticks(y_ticks)  # Set y-axis tick positions
-    plt.xticks(rotation=90)
-    ax.set_xlabel('Time (seconds since midnight)')
-    ax.set_ylabel('Intensity')
-    ax.set_title(title)
-    #ax.legend()
-    ax.grid(True)
-    plt.pause(timing)  # Pause briefly to update the plot
-
-def create_plot(schedule_dic, color_dic, date=None, timing=5.0, save_path=None):
-    """
-    Function to plot several schedules
-    Demo of capability and debug/confirmation of schedules generated
-    """
-    maximum_intensity = 500
-    #plt.ion()
-    fig, ax = plt.subplots(figsize=(11, 6))
-    fig.set_facecolor("dimgrey")
-    ax.set_facecolor("dimgrey")
-    #fig = plt.figure(figsize=(10, 6))
-    sum_intensities = [(0.0,0.0)]
-    for label, (schedule, json, driver_maximum_intensity, number_of_modules) in schedule_dic.items():
-        photon_schedule = [(time, number_of_modules*lmlg.get_photon_flux_for_i(json, lmlg.get_i_from_u_and_maximum_driver_intensity(v_value, driver_maximum_intensity))) for (time, v_value) in schedule]
-        # The simple sum does not work because the time coords are not synchronous.
-        # One does need an interp_sum function here
-        #sum_intensities = sum_data_points_seconds(sum_intensities, photon_schedule, max_intensity=10000.0)
-        # Unpack the time and intensity values
-        times, intensities = zip(*photon_schedule)
-        # Create a plot and add lines
-        ax.plot(times, intensities, label=label, marker='o', linestyle='-', color=color_dic[label])
-    #times, intensities = zip(*sum_intensities)
-    #maximum_intensity = (math.ceil(max(intensities)*10))/10
-    #ax.plot(times, intensities, label='total', marker='o', linestyle='--', color='lightgray')
-
-    current_date        = date if date is not None else datetime.date.today()
-    sun                 = Sun(lmt.LATITUDE, lmt.LONGITUDE)
-    sunrise_time_Seconds   = 3600 * lmlg.convert_datetime_to_decimal_hour(sun.get_sunrise_time(current_date) + datetime.timedelta(seconds=3600*lmt.TIMEZONE))
-    sunset_time_seconds    = 3600 * lmlg.convert_datetime_to_decimal_hour(sun.get_sunset_time(current_date) + datetime.timedelta(seconds=3600*lmt.TIMEZONE))
-    solstice_sum_sunrise   = 3600 * lmlg.get_summer_solstice_sunrise()
-    solstice_sum_sunset    = 3600 * lmlg.get_summer_solstice_sunset()
-    solstice_win_sunrise   = 3600 * lmlg.get_winter_solstice_sunrise()
-    solstice_win_sunset    = 3600 * lmlg.get_winter_solstice_sunset()
-
-    sunrise_sunset_ys = (0, maximum_intensity)
-    ax.plot((solstice_sum_sunrise, solstice_sum_sunrise), sunrise_sunset_ys, label='Summer Solstice Sunrise', linestyle=':', color='gold')
-    ax.plot((sunrise_time_Seconds, sunrise_time_Seconds), sunrise_sunset_ys, label=f'Current Sunrise ({lmlg.convert_decimal_hour_to_human_hour(sunrise_time_Seconds/3600)})', linestyle='--', color='goldenrod')
-    ax.plot((solstice_win_sunrise, solstice_win_sunrise), sunrise_sunset_ys, label='Winter Solstice Sunrise', linestyle=':', color='darkgoldenrod')
-    ax.plot((solstice_sum_sunset, solstice_sum_sunset), sunrise_sunset_ys, label='Summer Solstice Sunset', linestyle=':', color='lightcoral')
-    ax.plot((sunset_time_seconds, sunset_time_seconds), sunrise_sunset_ys, label=f'Current Sunset ({lmlg.convert_decimal_hour_to_human_hour(sunset_time_seconds/3600)})', linestyle='--', color='indianred')
-    ax.plot((solstice_win_sunset, solstice_win_sunset), sunrise_sunset_ys, label='Winter Solstice Sunset', linestyle=':', color='firebrick')
-    # Set the x-axis and y-axis limits
-    plt.xlim(0, 86400)  # Replace xmin and xmax with your desired minimum and maximum for the x-axis
-    plt.ylim(0.0, maximum_intensity)  # Replace ymin and ymax with your desired minimum and maximum for the y-axis
-
-    # Create a function to update the vertical line
-    def update_vertical_line(num, line, ax, legend):
-        #legend = ax.legend()
-        #legend.remove()
-        current_time = datetime.datetime.now(timezone('Europe/Brussels'))  # Replace 'Your_Timezone' with your desired timezone
-        current_time_seconds = (current_time - current_time.replace(hour=0, minute=0, second=0, microsecond=0)).total_seconds()
-        line.set_xdata([current_time_seconds, current_time_seconds])
-        line.set_label(f'Current Time ({current_time.strftime("%H:%M:%S")})')
-
-        legend = ax.legend()
-        return line,
-
-    # Create the vertical line
-    current_time_line, = ax.plot([0, 0], [0, maximum_intensity], label='Current Time ()', linestyle='--', color='white')
-
-    # Set the x-axis and y-axis limits (same as in your code)
-    plt.xlim(0, 86400)
-    plt.ylim(0.0, maximum_intensity)
-
-    # Customize grid steps (tick intervals) for x and y axes
-    x_ticks = np.arange(0, 86401, 3600)  # Define x-axis tick positions at intervals of one hour
-    y_ticks = np.arange(0.0, maximum_intensity+ 0.1, maximum_intensity/10)  # Define y-axis tick positions at intervals of 10V
-    plt.xticks(x_ticks)  # Set x-axis tick positions
-    plt.yticks(y_ticks)  # Set y-axis tick positions
-    plt.xticks(rotation=90)
-
-    # Set labels and title
-    ax.set_xlabel('Time (seconds)')
-    ax.set_ylabel('Photon intensity')
-    ax.set_title(f'Intensity Comparison - {current_date:%d %b %Y}')
-    ax.grid(True)
-    # Add a legend
-    legend = ax.legend()
-    # Create an animation to update the vertical line every 10 seconds
-    ani = animation.FuncAnimation(fig, update_vertical_line, fargs=(current_time_line, ax, legend),
-                                  interval=10, blit=True, cache_frame_data=False)
-
-    # Add top x-axis with hour labels
-    top_ax = ax.twiny()
-    top_ax.set_xlim(ax.get_xlim())
-    top_ticks = np.arange(0, 86401, 3600)
-    top_tick_labels = [f'{hour:02d}h' for hour in range(25)]
-    top_ax.set_xticks(top_ticks)
-    top_ax.set_xticklabels(top_tick_labels, rotation=90, horizontalalignment='center')
-    top_ax.spines['top'].set_position(('outward', 0))
-    top_ax.set_xlabel('Time (hours)')
-
-    if save_path:
-        fig.savefig(save_path)
-    plt.show()
-
-def wavelength_to_rgb(wavelength, gamma=0.8):
-    '''
-    Create a color map based on the wavelength values
-
-    taken from http://www.noah.org/wiki/Wavelength_to_RGB_in_Python
-    This converts a given wavelength of light to an
-    approximate RGB color value. The wavelength must be given
-    in nanometers in the range from 380 nm through 750 nm
-    (789 THz through 400 THz).
-
-    Based on code by Dan Bruton
-    http://www.physics.sfasu.edu/astro/color/spectra.html
-    Additionally alpha value set to 0.5 outside range
-    '''
-    wavelength = float(wavelength)
-    if wavelength >= 380 and wavelength <= 750:
-        A = 1.
-    else:
-        A=0.5
-    if wavelength < 380:
-        wavelength = 380.
-    if wavelength >750:
-        wavelength = 750.
-    if wavelength >= 380 and wavelength <= 440:
-        attenuation = 0.3 + 0.7 * (wavelength - 380) / (440 - 380)
-        R = ((-(wavelength - 440) / (440 - 380)) * attenuation) ** gamma
-        G = 0.0
-        B = (1.0 * attenuation) ** gamma
-    elif wavelength >= 440 and wavelength <= 490:
-        R = 0.0
-        G = ((wavelength - 440) / (490 - 440)) ** gamma
-        B = 1.0
-    elif wavelength >= 490 and wavelength <= 510:
-        R = 0.0
-        G = 1.0
-        B = (-(wavelength - 510) / (510 - 490)) ** gamma
-    elif wavelength >= 510 and wavelength <= 580:
-        R = ((wavelength - 510) / (580 - 510)) ** gamma
-        G = 1.0
-        B = 0.0
-    elif wavelength >= 580 and wavelength <= 645:
-        R = 1.0
-        G = (-(wavelength - 645) / (645 - 580)) ** gamma
-        B = 0.0
-    elif wavelength >= 645 and wavelength <= 750:
-        attenuation = 0.3 + 0.7 * (750 - wavelength) / (750 - 645)
-        R = (1.0 * attenuation) ** gamma
-        G = 0.0
-        B = 0.0
-    else:
-        R = 0.0
-        G = 0.0
-        B = 0.0
-    return (R,G,B,A)
-
-def animate_daily_spectrum(schedule_dic, time_step=60, save_path=None):
-    """
-    This function plots a spectrum diagram animated by the schedules defined for a day.
-    if a save_path is received, it saves an mp4 video of it.
-    A complete cumulated spectrum is plotted, along with two more lines to discriminate
-    the contribution of the two first schedules.
-    This function is currently tailored to receive 4 schedules, for FLUXengines 3500K, 5000k, APEXengines 385nm and 660nm.
-    It plots vertical lines for 385 and 660nm. This should be adapted for other modules list.
-    """
-    schedules = [[schedule, lmlg.get_photon_spectrum(json), maximum_driver_intensity, number_of_modules, json] for schedule_name, (schedule, json, maximum_driver_intensity, number_of_modules) in schedule_dic.items()]
-
-    # Define the time range of the day in seconds
-    start_time = 21600
-    end_time   = 79200
-
-    # Defines the maximum of intensity for the spectrum
-    max_intensity = 1000
-
-    # Create a figure and axis for the plot
-    fig, ax = plt.subplots(figsize=(10, 6))
-
-    clim=(300,780)
-    norm = plt.Normalize(*clim)
-    wl = np.arange(clim[0],clim[1]+1,2)
-    colorlist = list(zip(norm(wl),[wavelength_to_rgb(w) for w in wl]))
-    spectralmap = LinearSegmentedColormap.from_list("spectrum", colorlist)
-
-    wavelengths=range(clim[0], clim[1]+1,1)
-    y = np.linspace(0, max_intensity, 100)
-    X,Y = np.meshgrid(wavelengths, y)
-    extent=(np.min(wavelengths), np.max(wavelengths), np.min(y), np.max(y))
-
-    # Function to update the plot for each time of the day
-    def update_plot(time_in_seconds):
-        ax.clear()
-        spectra_list                       = []
-        spectra_list_no_660_no_385         = []
-        spectra_list_no_660_no_385_no_5000 = []
-        for i in range(len(schedules)):
-            intensity = lmlg.get_i_from_schedule(schedules[i][0], time_in_seconds, schedules[i][2])  # intensity in Amper
-            optical_power_for_i = lmlg.get_optical_power_for_i(schedules[i][4], intensity)
-            spectra_list.append(lmlg.get_spectrum_for_modules(schedules[i][1], optical_power_for_i, schedules[i][3]))
-            if i < 2:
-                spectra_list_no_660_no_385.append(lmlg.get_spectrum_for_modules(schedules[i][1],optical_power_for_i, schedules[i][3]))
-                if i < 1:
-                    spectra_list_no_660_no_385_no_5000.append(lmlg.get_spectrum_for_modules(schedules[i][1],optical_power_for_i, schedules[i][3]))
-        spectra_sum                       = lmlg.get_spectra_sum(spectra_list)
-        spectra_sum_no_660_no_385         = lmlg.get_spectra_sum(spectra_list_no_660_no_385)
-        spectra_sum_no_660_no_385_no_5000 = lmlg.get_spectra_sum(spectra_list_no_660_no_385_no_5000)
-        wavelength, intensity                                             = zip(*spectra_sum)
-        wavelength_no_660_no_385, intensity_no_660_no_385                 = zip(*spectra_sum_no_660_no_385)
-        wavelength_no_660_no_385_no_5000, intensity_no_660_no_385_no_5000 = zip(*spectra_sum_no_660_no_385_no_5000)
-
-        # Plot spectrum
-        ax.plot(wavelength, intensity, linestyle='-', color='darkgray')
-        ax.plot(wavelength_no_660_no_385, intensity_no_660_no_385, linestyle=':', linewidth=1, color='darkgray')
-        ax.plot(wavelength_no_660_no_385_no_5000, intensity_no_660_no_385_no_5000, linestyle='--', linewidth=1.25, color='darkgray')
-
-        # show color spectrum below spectrum
-        plt.imshow(X, clim=clim,  extent=extent, cmap=spectralmap, aspect='auto')
-
-        # Hides color spectrum above spectrum
-        ax.fill_between(wavelength, intensity, max_intensity, color='w')
-
-        ax.plot((385, 385), (0.0, max_intensity), linestyle='--', linewidth=1, color='lightgray')
-        ax.plot((660, 660), (0.0, max_intensity), linestyle='--', linewidth=1, color='lightgray')
-
-        ax.set_xlim(clim[0],clim[1])
-        ax.set_ylim(0.0, max_intensity)
-        ax.set_xlabel('Wavelength (nm)')
-        ax.set_ylabel('Intensity (µmol/s.nm)')
-        ax.set_title(f'Spectrum Intensity - {lmlg.convert_seconds_to_human_hour(time_in_seconds)}')
-        ax.grid(True)
-
-    # Create the animation
-    anim = animation.FuncAnimation(fig, update_plot, frames=range(start_time, end_time+1, time_step), interval=100, cache_frame_data=False, repeat=False)
-    if save_path:
-        anim.save(save_path, writer='ffmpeg', fps=10)  # Save the animation to a file
-    # Display the animated plot
     plt.show()
 
 # ------------------------------------------------------------------------------

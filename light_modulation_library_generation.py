@@ -31,6 +31,7 @@ sun = Sun(lmt.LATITUDE, lmt.LONGITUDE)
 
 # -- Core functions ------------------------------------------------------------
 
+# -- Date and time conversion --------------------------------------------------
 def convert_human_hour_to_decimal_hour(hours_double_point_minutes_string):
     """
     This function convert a string XX:xx representing an Hour:minute into a float
@@ -55,67 +56,7 @@ def convert_seconds_to_human_hour(time_seconds):
 def convert_datetime_to_decimal_hour(datetime):
     return(datetime.hour + datetime.minute/60 + datetime.second/3600)
 
-def calculate_intensity(current_time, earliest_power_on, latest_power_off, amplitude_modulation, maximum_broadness=4, transition_duration_minutes=None):
-    """
-    Methodology to draw the curve of the schedule, based on
-    cos(π/2 * sin(fraction_of_day (-π/2 to +π/2))^maximum_broadness
-    """
-    # Calculate the current time in hours
-    current_hour = convert_datetime_to_decimal_hour(current_time)
-    earliest_power_on -= transition_duration_minutes/60.0
-    latest_power_off += transition_duration_minutes/60.0
-
-    # Calculate the fraction of the day passed
-    fraction_of_day = (current_hour - earliest_power_on) / (latest_power_off - earliest_power_on)
-    # Calculate the angle for the cosine curve within the interval from -π/2 to +π/2
-    cosine_angle = math.pi * (fraction_of_day - 0.5)
-    # Calculate a simple intensity using the positive half of the cosine curve
-    # from earliest_power_on to latest_power_of
-    if 0.0 <= fraction_of_day and fraction_of_day <= 1.0:
-        intensity = max(0, math.cos((math.pi/2)*(math.sin(cosine_angle)**maximum_broadness)))
-    else:
-        intensity = 0.0
-    return intensity * amplitude_modulation
-
-def calculate_intensity_2(current_time, earliest_power_on, latest_power_off, amplitude_modulation, maximum_broadness=4, transition_duration_minutes=None):
-    """
-    New methodology to draw the curve of the schedule, based on
-    1 - cos(π/2 * cos(a * fraction_of_day)^b)^c
-    fraction_of_day being inside (-π/2 to +π/2)
-    a being (1/(b + e))^(1/4*d)
-    b being d/3
-    c being b^d
-    d being maximum_broadness (2.5 - 15)
-    e being (-2.05/39.0625)*(d-2)*(d-15)
-    All this working to create a broader and broader cosine curve with its feet not moving
-    Maximum_broadness = 2.5 gives almost a triangle curve.
-    Maximum_broadness = 3 gives a normal cosine curve.
-    Values higher broadens the maximum area where intensity = 1.
-    Maximum_broadness = 15 gives almost a square wave.
-    """
-    # Calculate the current time in hours
-    current_hour = convert_datetime_to_decimal_hour(current_time)
-    earliest_power_on -= transition_duration_minutes/60.0
-    latest_power_off += transition_duration_minutes/60.0
-
-    # Calculate the fraction of the day passed
-    fraction_of_day = (current_hour - earliest_power_on) / (latest_power_off - earliest_power_on)
-    # Calculate a simple intensity using the positive half of the cosine curve
-    # from earliest_power_on to latest_power_of
-    if 0.0 < fraction_of_day and fraction_of_day < 1.0:
-        # Calculate the angle for the cosine curve within the interval from -π/2 to +π/2
-        cosine_angle = math.pi * (fraction_of_day - 0.5)
-        b = maximum_broadness/3.0
-        c = b**maximum_broadness
-        e = (-2.05/39.0625)*(maximum_broadness-2)*(maximum_broadness-15)
-        a = (1/(b + e))**(1/(4*maximum_broadness))
-        #logging.debug(f'angle: {cosine_angle}\nd: {maximum_broadness}\nb: {b}\nc: {c}\ne: {e}\na: {a}')
-        intensity = max(0, 1-(math.cos((math.pi/2)*(math.cos(a*cosine_angle)**b))**c))
-        #logging.debug(f'Intensity: {intensity}')
-    else:
-        intensity = 0.0
-    return intensity * amplitude_modulation
-
+# -- schedule computation ------------------------------------------------------
 def get_equinox_sunrise():
     """
     This function gives the hour of sunrise at Equinox, used to evaluate the
@@ -187,6 +128,67 @@ def get_winter_solstice_sunset():
     timezone_hours = datetime.timedelta(seconds=3600*lmt.TIMEZONE)
     equinox_sunset_time = sun.get_sunset_time(date=datetime.date(datetime.date.today().year,12,22)) + timezone_hours
     return convert_datetime_to_decimal_hour(equinox_sunset_time)
+
+def calculate_intensity(current_time, earliest_power_on, latest_power_off, amplitude_modulation, maximum_broadness=4, transition_duration_minutes=None):
+    """
+    Methodology to draw the curve of the schedule, based on
+    cos(π/2 * sin(fraction_of_day (-π/2 to +π/2))^maximum_broadness
+    """
+    # Calculate the current time in hours
+    current_hour = convert_datetime_to_decimal_hour(current_time)
+    earliest_power_on -= transition_duration_minutes/60.0
+    latest_power_off += transition_duration_minutes/60.0
+
+    # Calculate the fraction of the day passed
+    fraction_of_day = (current_hour - earliest_power_on) / (latest_power_off - earliest_power_on)
+    # Calculate the angle for the cosine curve within the interval from -π/2 to +π/2
+    cosine_angle = math.pi * (fraction_of_day - 0.5)
+    # Calculate a simple intensity using the positive half of the cosine curve
+    # from earliest_power_on to latest_power_of
+    if 0.0 <= fraction_of_day and fraction_of_day <= 1.0:
+        intensity = max(0, math.cos((math.pi/2)*(math.sin(cosine_angle)**maximum_broadness)))
+    else:
+        intensity = 0.0
+    return intensity * amplitude_modulation
+
+def calculate_intensity_2(current_time, earliest_power_on, latest_power_off, amplitude_modulation, maximum_broadness=4, transition_duration_minutes=None):
+    """
+    New methodology to draw the curve of the schedule, based on
+    1 - cos(π/2 * cos(a * fraction_of_day)^b)^c
+    fraction_of_day being inside (-π/2 to +π/2)
+    a being (1/(b + e))^(1/4*d)
+    b being d/3
+    c being b^d
+    d being maximum_broadness (2.5 - 15)
+    e being (-2.05/39.0625)*(d-2)*(d-15)
+    All this working to create a broader and broader cosine curve with its feet not moving
+    Maximum_broadness = 2.5 gives almost a triangle curve.
+    Maximum_broadness = 3 gives a normal cosine curve.
+    Values higher broadens the maximum area where intensity = 1.
+    Maximum_broadness = 15 gives almost a square wave.
+    """
+    # Calculate the current time in hours
+    current_hour = convert_datetime_to_decimal_hour(current_time)
+    earliest_power_on -= transition_duration_minutes/60.0
+    latest_power_off += transition_duration_minutes/60.0
+
+    # Calculate the fraction of the day passed
+    fraction_of_day = (current_hour - earliest_power_on) / (latest_power_off - earliest_power_on)
+    # Calculate a simple intensity using the positive half of the cosine curve
+    # from earliest_power_on to latest_power_of
+    if 0.0 < fraction_of_day and fraction_of_day < 1.0:
+        # Calculate the angle for the cosine curve within the interval from -π/2 to +π/2
+        cosine_angle = math.pi * (fraction_of_day - 0.5)
+        b = maximum_broadness/3.0
+        c = b**maximum_broadness
+        e = (-2.05/39.0625)*(maximum_broadness-2)*(maximum_broadness-15)
+        a = (1/(b + e))**(1/(4*maximum_broadness))
+        #logging.debug(f'angle: {cosine_angle}\nd: {maximum_broadness}\nb: {b}\nc: {c}\ne: {e}\na: {a}')
+        intensity = max(0, 1-(math.cos((math.pi/2)*(math.cos(a*cosine_angle)**b))**c))
+        #logging.debug(f'Intensity: {intensity}')
+    else:
+        intensity = 0.0
+    return intensity * amplitude_modulation
 
 def mod_on_off_times(earliest_power_on, latest_power_off, mode='centered', length_proportion=1.0, shift_proportion=0.0):
     """
@@ -267,6 +269,7 @@ def calculate_Schedule(current_date, earliest_power_on, latest_power_off, modula
         iterations += 1
     return data_points_seconds, data_points_hours
 
+# -- General functions to create finished schedule -----------------------------
 def create_intensity_data_suntime(maximum_voltage, mode="centered", length_proportion=1.0, shift_proportion=0.0, date=None, maximum_broadness=3, transition_duration_minutes=0, plot=False):
     """
     Create a list of times and intensities throughout the day (packed in tuples).
@@ -302,8 +305,6 @@ def create_intensity_data_suntime(maximum_voltage, mode="centered", length_propo
 
     # returns scaled schedules for the voltage required and a few more infos for reporting
     return scale_data_points_seconds(data_points_seconds, maximum_voltage, plot=plot), scale_data_points_seconds(data_points_hours, maximum_voltage), earliest_power_on, latest_power_off, modulated_max_intensity
-
-# -- Functions more directly linked to produce data_points for crescontrol -----
 
 def scale_data_points_seconds(data_points_seconds, scale_factor, plot=False):
     """
@@ -402,6 +403,7 @@ def gate_data_points_seconds(data_points_seconds, treshold=0.01, lower_gate=1, u
         plt.close(fig=fig)
     return gated_data_points_seconds
 
+# -- Functions more directly linked to format data_points for crescontrol ------
 def simplify_data_points_seconds(data_points_seconds, desired_num_points=32, ax=None):
     """
     this trims down the number of points in the schedule to 32 by default (and max allowed by CresControl)
@@ -529,7 +531,6 @@ def stringify_schedules_in_dic(schedule_dic):
     return stringified_schedules_dic
 
 # --- Other functions that deal with the parameters of modules -----------------
-
 def get_json_file(json_name):
     f = f'./{json_name}.json'
     records = json.loads(open(f).read())
@@ -539,17 +540,20 @@ def get_module_json(module_name, refresh_json=False):
     """
     This function download the json for the named module if needed.
     """
-    if not os.path.isfile(f'./{module_name}.json') or refresh_json:
-        response = requests.get(f'{lmt.CS_JSN_URL}{module_name}.json')
-        with open(f'./{module_name}.json', mode = 'wb') as file:
-            file.write(response.content)
-    return get_json_file(module_name)
+    try:
+        if not os.path.isfile(f'./{module_name}.json') or refresh_json:
+            response = requests.get(f'{lmt.CS_JSN_URL}{module_name}.json')
+            with open(f'./{module_name}.json', mode = 'wb') as file:
+                file.write(response.content)
+        return get_json_file(module_name)
+    except Exception as err:
+        logging.error(f'A problem occured trying to get json file for module {module_name}:\n!!! -> {err}')
 
 def interpolate_value_for_i(module_json_dic, spec, i_value):
     """
-    This function interpolate the value of spec ("I_U" or "I_photon_efficiency")
-    # according to intensity (Amper) based on the
-    measures provided by the module json dictionary under entry 'spec'
+    This function interpolate the value of spec
+    according to intensity (i_value in Amper) based on the
+    measures provided by the module json dictionary under entry spec ("I_U" or else)
     """
     # Extract x and y values into separate lists
     i_values, u_values = zip(*module_json_dic[spec])
