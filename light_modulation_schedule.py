@@ -493,7 +493,7 @@ def generate_schedules_new(date, schedules_dic, schedule_name=None, debug=False)
         out_schedule_dic[name] = (schedule_out, schedule_dic["out"], generate_meta(schedule_dic))
         # for plots
         color_dic[name] = schedule_dic["plot_color"]
-        schedules_json_driver_dic[name] = (schedule_out, lmlg.get_module_json(schedule_dic["json"]), schedule_dic["driver_maximum_intensity"], schedule_dic["number_of_modules_in_serie"])
+        schedules_json_driver_dic[name] = (schedule_out, lmlg.get_module_json(schedule_dic["json"]), schedule_dic["driver_maximum_intensity"], schedule_dic["number_of_modules_in_serie"], schedule_dic["number_of_modules_in_parallel"])
         # for mail report
         schedule_dic_list.append(schedule)
 
@@ -551,12 +551,14 @@ and a loss factor of {((1.0-loss_factor)*100):2.0f}% \n\
         # get the json files for the modules
         json = lmlg.get_module_json(schedule_dic["json"])
         number_of_modules_in_serie = schedule_dic["number_of_modules_in_serie"]
+        number_of_modules_in_parallel = schedule_dic["number_of_modules_in_parallel"]
+        number_of_modules = number_of_modules_in_serie*number_of_modules_in_parallel
         schedule = out_schedule_dic[schedule_name][0]
         driver_maximum_intensity = schedule_dic["driver_maximum_intensity"]
-        dli = loss_factor*number_of_modules_in_serie*lmlg.get_dli_by_m2(schedule, driver_maximum_intensity, json, lit_area)/1000000
+        dli = loss_factor*number_of_modules*lmlg.get_dli_by_m2(schedule, driver_maximum_intensity/number_of_modules_in_parallel, json, lit_area)/1000000
         total_dli += dli
         dli_details += f'\
-{dli:6.3f} mol/m²/day of photon delivered by {number_of_modules_in_serie} {schedule_dic["json"]} on a driver set at {driver_maximum_intensity:4.0f}mA.\n'
+{dli:6.3f} mol/m²/day of photon delivered by {schedule_dic["json"]} configured as [{number_of_modules_in_serie},{number_of_modules_in_parallel}] on a driver set at {driver_maximum_intensity:4.0f}mA.\n'
     dli_details += f'\
 {total_dli:6.3f} mol/m²/day of photon delivered in total.\n\
 --------------------------------------------------------------------------------\n'
@@ -567,7 +569,7 @@ def generate_meta(schedule_dic):
     """
     meta = schedule_dic["out"] +\
            ':meta="{\\"unit\\":\\"A\\",\\"module\\":{\\"driver\\":{\\"configuration\\":[' +\
-           f'{schedule_dic["number_of_modules_in_serie"]:1d},1],\\"id\\":\\"' +\
+           f'{schedule_dic["number_of_modules_in_serie"]:1d},{schedule_dic["number_of_modules_in_parallel"]:1d}],\\"id\\":\\"' +\
            f'{schedule_dic["driver"]}' + '\\"},\\"id\\":\\"' +\
            f'{schedule_dic["module"]}' + '\\"},\\"type\\":\\"light\\",\\"icon\\":\\"' +\
            f'{schedule_dic["module_type"]}' + '\\",\\"id\\":\\"' +\

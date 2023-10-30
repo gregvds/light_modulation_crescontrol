@@ -33,11 +33,13 @@ def get_args():
     """
     parser = argparse.ArgumentParser(description="""
     Python script to generate schedules modulated according to the current day.
-    This script can be run manually, or called regularly with cron for example.""",
+    This script can be run manually, or called regularly with cron for example.
+    calling the script with no options will demo, simply outputing to the prompt.
+    See options for further functionalities.""",
                                      epilog="""
-    Please, refer to light_modulation_schedule.py for further informations on
+    Please, refer to light_modulation.json for further informations on
     how to tailor your schedules.
-    Currently, light_modulation_schedule generates three schedules:
+    In absence of a json file, light_modulation_schedule generates four schedules:
     - one for FLUXengine 3500K, mainly active at dawn and dusk
     - one for FLUXengine 5000K, during all day
     - one for APEXengine 385nm, around the mid part of the day
@@ -53,19 +55,19 @@ def get_args():
                         action='count',
                         help="verbosity mode, cumulative: -v for warning level, -vv for info level, -vvv for debug level")
     parser.add_argument("-q",
-                        "--noquery",
+                        "--query",
                         action='store_true',
-                        help="No queries sent to CresControl")
+                        help="Schedules will be sent to CresControl")
     parser.add_argument("-m",
-                        "--nomail",
+                        "--mail",
                         action='store_true',
-                        help="No report sent by email")
+                        help="Report will be sent by email")
     parser.add_argument("-d",
                         "--date",
-                        help="pass a date (YYYY-MM-DD) to the script")
+                        help="pass a date (YYYY-MM-DD) to the script to generate schedules for this date")
     parser.add_argument("-j",
                         "--json",
-                        help="pass a json file to the script with schedules definition.\nThe file must be in the same directory as the script and only the file name must be given, no path no extension")
+                        help="pass a json file to the script with schedules definition.\nThe file must be in the same directory as the script and only the file name must be given, no path, no extension")
 
     args = parser.parse_args()
     if args.verbosity is None:
@@ -124,7 +126,7 @@ def main():
     logging.info(result_for_mail)
 
     # we send the schedules to the Crescontrol, if not in no query mode
-    if not args.noquery:
+    if args.query:
         logging.info(f'Sending from            system on {LOCAL_IP}')
         # Let's find out if CresControl is reachable:
         status = lmlc.test_crescontrol_online()
@@ -154,19 +156,19 @@ def main():
             logging.warning(f'Crescontrol on {lmt.CRESCONTROL_IP} was not found, nothing done!\n')
         lmlc.close_ws_on_cc()
     else:
-        logging.info('No queries sent to CresControl (arg -q received).')
+        logging.info('No queries sent to CresControl (no arg -q received).')
     end = time.time()
     time_taken = end - start
     logging.info(f'Finished in {lmlc.round_thousands_second_time_delta(time_taken)} secs.')
 
     # Send of mail if not in no mail mode
-    if not args.nomail:
-        logging.info('Sending logging by email (no arg -m received).')
+    if args.mail:
+        logging.info('Sending logging by email (arg -m received).')
         with open(f'{os.path.join(LOCALDIRN, LOGFILE)}', mode = 'r') as file:
             fileContent = file.read()
             lmlc.send_mail(fileContent)
     else:
-        logging.info('No mail sent (arg -m received).')
+        logging.info('No mail sent (no arg -m received).')
 
 # ------------------------------------------------------------------------------
 # -- Main use of code ----------------------------------------------------------

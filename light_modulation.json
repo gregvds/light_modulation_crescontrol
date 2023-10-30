@@ -2,6 +2,7 @@
   "schedules": {
     "schedule_3500_dawn": {
       "number_of_modules_in_serie": 6,
+      "number_of_modules_in_parallel": 1,
       "driver_maximum_intensity": 610,
       "driver_minimal_voltage_for_light": 0.75,
       "maximum_intensity_required": 0.82,
@@ -14,6 +15,7 @@
     },
     "schedule_3500_dusk": {
       "number_of_modules_in_serie": 6,
+      "number_of_modules_in_parallel": 1,
       "driver_maximum_intensity": 610,
       "driver_minimal_voltage_for_light": 0.75,
       "maximum_intensity_required": 0.82,
@@ -35,6 +37,7 @@
       "plot_color": "ivory",
       "meta": "",
       "number_of_modules_in_serie": 6,
+      "number_of_modules_in_parallel": 1,
       "driver_maximum_intensity": 610,
       "driver_minimal_voltage_for_light": 0.75,
       "maximum_intensity_required": 0.82,
@@ -49,6 +52,7 @@
     },
     "schedule_5000_full": {
       "number_of_modules_in_serie": 6,
+      "number_of_modules_in_parallel": 1,
       "driver_maximum_intensity": 1510,
       "driver_minimal_voltage_for_light": 0.95,
       "maximum_intensity_required": 0.75,
@@ -70,6 +74,7 @@
       "plot_color": "lightSkyBlue",
       "meta": "",
       "number_of_modules_in_serie": 6,
+      "number_of_modules_in_parallel": 1,
       "driver_maximum_intensity": 1510,
       "driver_minimal_voltage_for_light": 0.95,
       "maximum_intensity_required": 0.75,
@@ -93,6 +98,7 @@
       "plot_color": "blueviolet",
       "meta": "CSC-AXE-004-A-38",
       "number_of_modules_in_serie": 5,
+      "number_of_modules_in_parallel": 1,
       "driver_maximum_intensity": 600,
       "driver_minimal_voltage_for_light": 0.71,
       "maximum_intensity_required": 0.6,
@@ -105,6 +111,7 @@
     },
     "schedule_660_dawn": {
       "number_of_modules_in_serie": 5,
+      "number_of_modules_in_parallel": 1,
       "driver_maximum_intensity": 600,
       "driver_minimal_voltage_for_light": 0.71,
       "maximum_intensity_required": 0.3,
@@ -117,6 +124,7 @@
     },
     "schedule_660_dusk": {
       "number_of_modules_in_serie": 5,
+      "number_of_modules_in_parallel": 1,
       "driver_maximum_intensity": 600,
       "driver_minimal_voltage_for_light": 0.71,
       "maximum_intensity_required": 0.3,
@@ -138,6 +146,7 @@
       "plot_color": "DarkRed",
       "meta": "",
       "number_of_modules_in_serie": 5,
+      "number_of_modules_in_parallel": 1,
       "driver_maximum_intensity": 600,
       "driver_minimal_voltage_for_light": 0.71,
       "maximum_intensity_required": 0.3,

@@ -7,6 +7,8 @@
 # ------------------------------------------------------------------------------
 
 # -- Imports for plots and graphs
+#import matplotlib
+#matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.widgets import Slider, RadioButtons
@@ -150,7 +152,8 @@ def create_plot(schedule_dic, color_dic, date=None, timing=5.0, save_path=None):
     ax.set_facecolor("dimgrey")
     #fig = plt.figure(figsize=(10, 6))
     sum_intensities = [(0.0,0.0)]
-    for label, (schedule, json, driver_maximum_intensity, number_of_modules) in schedule_dic.items():
+    for label, (schedule, json, driver_maximum_intensity, serie, parallel) in schedule_dic.items():
+        number_of_modules = serie*parallel
         photon_schedule = [(time, number_of_modules*lmlg.get_photon_flux_for_i(json, lmlg.get_i_from_u_and_maximum_driver_intensity(v_value, driver_maximum_intensity))) for (time, v_value) in schedule]
         # The simple sum does not work because the time coords are not synchronous.
         # One does need an interp_sum function here
@@ -243,7 +246,7 @@ def animate_daily_spectrum(schedule_dic, time_step=60, save_path=None):
     This function is currently tailored to receive 4 schedules, for FLUXengines 3500K, 5000k, APEXengines 385nm and 660nm.
     It plots vertical lines for 385 and 660nm. This should be adapted for other modules list.
     """
-    schedules = [[schedule, lmlg.get_photon_spectrum(json), maximum_driver_intensity, number_of_modules, json] for schedule_name, (schedule, json, maximum_driver_intensity, number_of_modules) in schedule_dic.items()]
+    schedules = [[schedule, lmlg.get_photon_spectrum(json), maximum_driver_intensity, serie, parallel, json] for schedule_name, (schedule, json, maximum_driver_intensity, serie, parallel) in schedule_dic.items()]
 
     # Define the time range of the day in seconds
     start_time = 21600
@@ -273,13 +276,20 @@ def animate_daily_spectrum(schedule_dic, time_step=60, save_path=None):
         spectra_list_no_660_no_385         = []
         spectra_list_no_660_no_385_no_5000 = []
         for i in range(len(schedules)):
-            intensity = lmlg.get_i_from_schedule(schedules[i][0], time_in_seconds, schedules[i][2])  # intensity in Amper
-            optical_power_for_i = lmlg.get_optical_power_for_i(schedules[i][4], intensity)
-            spectra_list.append(lmlg.get_spectrum_for_modules(schedules[i][1], optical_power_for_i, schedules[i][3]))
+            schedule = schedules[i][0]
+            spectrum = schedules[i][1]
+            maximum_driver_intensity = schedules[i][2]
+            serie = schedules[i][3]
+            parallel = schedules[i][4]
+            modules = serie * parallel
+            jsonDic = schedules[i][5]
+            intensity = lmlg.get_i_from_schedule(schedule, time_in_seconds, maximum_driver_intensity/parallel)  # intensity in Amper
+            optical_power_for_i = lmlg.get_optical_power_for_i(jsonDic, intensity)
+            spectra_list.append(lmlg.get_spectrum_for_modules(spectrum, optical_power_for_i, modules))
             if i < 2:
-                spectra_list_no_660_no_385.append(lmlg.get_spectrum_for_modules(schedules[i][1],optical_power_for_i, schedules[i][3]))
+                spectra_list_no_660_no_385.append(lmlg.get_spectrum_for_modules(spectrum,optical_power_for_i, modules))
                 if i < 1:
-                    spectra_list_no_660_no_385_no_5000.append(lmlg.get_spectrum_for_modules(schedules[i][1],optical_power_for_i, schedules[i][3]))
+                    spectra_list_no_660_no_385_no_5000.append(lmlg.get_spectrum_for_modules(spectrum,optical_power_for_i, modules))
         spectra_sum                       = lmlg.get_spectra_sum(spectra_list)
         spectra_sum_no_660_no_385         = lmlg.get_spectra_sum(spectra_list_no_660_no_385)
         spectra_sum_no_660_no_385_no_5000 = lmlg.get_spectra_sum(spectra_list_no_660_no_385_no_5000)
@@ -311,7 +321,7 @@ def animate_daily_spectrum(schedule_dic, time_step=60, save_path=None):
     # Create the animation
     anim = animation.FuncAnimation(fig, update_plot, frames=range(start_time, end_time+1, time_step), interval=100, cache_frame_data=False, repeat=False)
     if save_path:
-        anim.save(save_path, writer='ffmpeg', fps=10)  # Save the animation to a file
+        anim.save(save_path, writer="ffmpeg", fps=10)  # Save the animation to a file
     # Display the animated plot
     plt.show()
 
